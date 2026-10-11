@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Q3 2026 Engineering Report</title>
+<style>
+:root {
+  --text: #1f2933;
+  --muted: #6b7280;
+  --border: #d7dbe0;
+  --accent: #1d4ed8;
+  --code-bg: #f3f4f6;
+  --bg: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --border: #374151;
+    --accent: #60a5fa;
+    --code-bg: #1f2937;
+    --bg: #111827;
+  }
+}
+body {
+  margin: 0 auto;
+  max-width: 52rem;
+  padding: 2rem 1.5rem 4rem;
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+}
+h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.6em 0 0.5em; }
+h1 { font-size: 1.9rem; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
+h3 { font-size: 1.15rem; }
+a { color: var(--accent); }
+.report-meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; }
+.report-meta .subtitle { font-size: 1.05rem; font-style: italic; }
+table { border-collapse: collapse; margin: 1em 0; width: 100%; }
+th, td { border: 1px solid var(--border); padding: 0.45em 0.7em; text-align: left; }
+th { background: var(--code-bg); }
+caption { caption-side: bottom; color: var(--muted); font-size: 0.85rem; padding-top: 0.4em; }
+code { background: var(--code-bg); border-radius: 4px; padding: 0.15em 0.35em; font-size: 0.9em; }
+pre { background: var(--code-bg); border-radius: 8px; padding: 1em; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+blockquote { border-left: 4px solid var(--border); color: var(--muted); margin: 1em 0; padding: 0.1em 1em; }
+img { max-width: 100%; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+</style>
+</head>
+<body>
+<h1>Q3 2026 Engineering Report</h1>
+<div class="report-meta">
+<div class="subtitle">Platform team quarterly summary</div>
+<div><strong>Author:</strong> Michal Stojke</div>
+<div><strong>Date:</strong> 2026-08-26</div>
+</div>
+<h2>Executive Summary</h2>
+<p>The platform team shipped <strong>14 features</strong> this quarter while reducing infrastructure spend by <strong>18%</strong>. Details below; raw dashboards are available <a href="https://example.com/dashboards">here</a>.</p>
+<blockquote><p>Best quarter for platform reliability since 2024.</p></blockquote>
+<h2>Key Metrics</h2>
+<table>
+<caption>Quarter-over-quarter platform metrics</caption>
+<thead>
+<tr><th style="text-align:left">Metric</th><th style="text-align:right">Q2</th><th style="text-align:right">Q3</th><th style="text-align:right">Change</th></tr>
+</thead>
+<tbody>
+<tr><td style="text-align:left">Uptime</td><td style="text-align:right">99.92%</td><td style="text-align:right">99.98%</td><td style="text-align:right">+0.06 pp</td></tr>
+<tr><td style="text-align:left">p95 latency</td><td style="text-align:right">410 ms</td><td style="text-align:right">290 ms</td><td style="text-align:right">-29%</td></tr>
+<tr><td style="text-align:left">Monthly cost</td><td style="text-align:right">$48k</td><td style="text-align:right">$39k</td><td style="text-align:right">-18%</td></tr>
+</tbody>
+</table>
+<h2>Highlights</h2>
+<ul>
+<li><strong>New deploy pipeline</strong> — rollouts now take 4 minutes</li>
+<li>Migrated the job queue to <code>redis-streams</code>
+<ul>
+<li>Zero-downtime cutover</li>
+<li>Old queue decommissioned</li>
+</ul>
+</li>
+<li><em>Docs overhaul</em> for internal APIs</li>
+</ul>
+<h3>Deploy pipeline</h3>
+<p>The new pipeline is configured with a single manifest:</p>
+<pre><code class="language-yaml">pipeline:
+  stages: [build, test, canary, rollout]
+  canary_traffic: &quot;5%&quot;</code></pre>
+<hr>
+<p><em>Generated with the </em><code>reportsmith</code><em> library.</em></p>
+</body>
+</html>

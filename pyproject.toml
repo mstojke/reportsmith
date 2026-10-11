@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reportsmith"
+dynamic = ["version"]
+description = "A small, dependency-free library for building reports and exporting them to Markdown and HTML"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Michal Stojke" }]
+keywords = ["report", "markdown", "html", "export", "document"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Processing :: Markup :: Markdown",
+    "Topic :: Text Processing :: Markup :: HTML",
+]
+
+[project.urls]
+Homepage = "https://github.com/mstojke/reportsmith"
+Documentation = "https://github.com/mstojke/reportsmith/blob/main/docs/user-guide.md"
+Changelog = "https://github.com/mstojke/reportsmith/blob/main/CHANGELOG.md"
+Issues = "https://github.com/mstojke/reportsmith/issues"
+
+[project.optional-dependencies]
+pdf = ["fpdf2"]
+dev = ["pytest", "pytest-cov", "fpdf2"]
+docs = ["sphinx", "myst-parser", "sphinx-rtd-theme"]
+
+[tool.setuptools.dynamic]
+version = { attr = "reportsmith.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["reportsmith*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
