@@ -56,7 +56,8 @@ report.paragraph([italic("Generated with the "), code("reportsmith"), italic(" l
 
 md_path = report.save_markdown("example_report.md")
 html_path = report.save_html("example_report.html")
-print(f"Wrote {md_path} and {html_path}")
+tex_path = report.save_latex("example_report.tex")
+print(f"Wrote {md_path}, {html_path} and {tex_path}")
 
 try:
     pdf_path = report.save_pdf("example_report.pdf")

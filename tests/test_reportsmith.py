@@ -140,7 +140,7 @@ class TestValidation:
     def test_bad_raw_format(self):
         r = make_report()
         with pytest.raises(ValueError, match="markdown"):
-            r.raw("x", format="latex")
+            r.raw("x", format="rtf")
 
 
 class TestReportMeta:

@@ -15,7 +15,8 @@ class Report(Container):
     Content is added through the fluent builder methods inherited from
     :class:`~reportsmith.elements.Container` (``paragraph``, ``table``,
     ``section``, ...) and exported with :meth:`to_markdown` /
-    :meth:`to_html` or saved with :meth:`save_markdown` / :meth:`save_html`.
+    :meth:`to_html` / :meth:`to_latex` or saved with :meth:`save_markdown` /
+    :meth:`save_html` / :meth:`save_latex`.
     """
 
     def __init__(
@@ -72,6 +73,31 @@ class Report(Container):
 
         return PdfRenderer(fonts=fonts, mono_fonts=mono_fonts).render(self)
 
+    def to_latex(
+        self,
+        full_document: bool = True,
+        document_class: str = "article",
+        class_options: str = "11pt,a4paper",
+        preamble: str = "",
+        numbered: bool = False,
+    ) -> str:
+        """Render the report as LaTeX source.
+
+        ``full_document=True`` (default) produces a compilable document with
+        a title block; ``False`` produces only the body content. ``preamble``
+        is appended to the built-in preamble; ``numbered=True`` numbers
+        sections.
+        """
+        from .renderers.latex import LatexRenderer
+
+        return LatexRenderer(
+            full_document=full_document,
+            document_class=document_class,
+            class_options=class_options,
+            preamble=preamble,
+            numbered=numbered,
+        ).render(self)
+
     def save_markdown(self, path: Union[str, Path]) -> Path:
         """Write the Markdown export to ``path`` and return it."""
         path = Path(path)
@@ -84,6 +110,29 @@ class Report(Container):
         """Write the HTML export to ``path`` and return it."""
         path = Path(path)
         path.write_text(self.to_html(full_document=full_document, css=css), encoding="utf-8")
+        return path
+
+    def save_latex(
+        self,
+        path: Union[str, Path],
+        full_document: bool = True,
+        document_class: str = "article",
+        class_options: str = "11pt,a4paper",
+        preamble: str = "",
+        numbered: bool = False,
+    ) -> Path:
+        """Write the LaTeX export to ``path`` and return it."""
+        path = Path(path)
+        path.write_text(
+            self.to_latex(
+                full_document=full_document,
+                document_class=document_class,
+                class_options=class_options,
+                preamble=preamble,
+                numbered=numbered,
+            ),
+            encoding="utf-8",
+        )
         return path
 
     def save_pdf(

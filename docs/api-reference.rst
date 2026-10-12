@@ -14,7 +14,7 @@ Everything documented here is importable from the top-level package:
        Heading, Paragraph, Quote, CodeBlock, ListElement, Table, Image,
        HorizontalRule, Raw,
        Inline, bold, italic, code, link,
-       MarkdownRenderer, HtmlRenderer, PdfRenderer,
+       MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer,
    )
 
 Type aliases
@@ -61,6 +61,15 @@ Report
    .. py:method:: save_html(path, full_document=True, css=None) -> pathlib.Path
 
       Write UTF-8 HTML to *path* and return it.
+
+   .. py:method:: to_latex(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False) -> str
+
+      Render the report as LaTeX source. See :class:`LatexRenderer` for the
+      parameters.
+
+   .. py:method:: save_latex(path, full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False) -> pathlib.Path
+
+      Write UTF-8 LaTeX to *path* and return it.
 
    .. py:method:: to_pdf(fonts=None, mono_fonts=None) -> bytes
 
@@ -194,9 +203,9 @@ render-agnostic.
 
 .. py:class:: Raw(content, format="both")
 
-   Verbatim passthrough. ``format`` is ``"markdown"``, ``"html"``, or
-   ``"both"``; the content is emitted only when the output format matches,
-   otherwise skipped.
+   Verbatim passthrough. ``format`` is ``"markdown"``, ``"html"``,
+   ``"latex"``, or ``"both"`` (Markdown and HTML); the content is emitted
+   only when the output format matches, otherwise skipped.
 
    :raises ValueError: for any other ``format`` value.
 
@@ -229,9 +238,9 @@ Inline spans
 Renderers
 =========
 
-Both renderers expose ``render(report) -> str``.
-:meth:`Report.to_markdown` and :meth:`Report.to_html` are convenience
-wrappers around these.
+Each renderer exposes ``render(report)``. :meth:`Report.to_markdown`,
+:meth:`Report.to_html`, :meth:`Report.to_latex`, and :meth:`Report.to_pdf`
+are convenience wrappers around these.
 
 .. py:class:: MarkdownRenderer()
 
@@ -253,6 +262,27 @@ wrappers around these.
 
    All text content and attribute values are HTML-escaped; table alignment
    is emitted as inline ``text-align`` styles.
+
+   .. py:method:: render(report) -> str
+
+.. py:class:: LatexRenderer(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False)
+
+   :param bool full_document: ``True`` produces a complete document
+      (preamble, ``\maketitle`` block, body) that compiles with pdfLaTeX,
+      XeLaTeX, or LuaLaTeX; ``False`` produces the body only, for
+      ``\input`` into an existing document.
+   :param str document_class: The ``\documentclass``.
+   :param str class_options: Class options; ``""`` for none.
+   :param str preamble: Extra preamble appended after
+      ``reportsmith.renderers.latex.DEFAULT_PREAMBLE``.
+   :param bool numbered: Number sections. Unnumbered sections are still
+      bookmarked.
+
+   All text is LaTeX-escaped (also available as
+   ``reportsmith.renderers.latex.escape_latex``). Tables use ``longtable``
+   and ``booktabs``; code blocks use ``fancyvrb``; remote (``http(s)://``)
+   images render as links; empty lists and zero-column tables are omitted;
+   only :class:`Raw` content with ``format="latex"`` is emitted.
 
    .. py:method:: render(report) -> str
 

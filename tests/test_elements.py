@@ -73,12 +73,12 @@ class TestListElement:
 
 
 class TestRaw:
-    @pytest.mark.parametrize("fmt", ["markdown", "html", "both"])
+    @pytest.mark.parametrize("fmt", ["markdown", "html", "latex", "both"])
     def test_valid_formats(self, fmt):
         assert Raw("x", fmt).format == fmt
 
     def test_invalid_format_rejected(self):
-        with pytest.raises(ValueError, match="'markdown', 'html' or 'both'"):
+        with pytest.raises(ValueError, match="'markdown', 'html', 'latex' or 'both'"):
             Raw("x", "pdf")
 
 

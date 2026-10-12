@@ -94,13 +94,16 @@ class HorizontalRule(Element):
 class Raw(Element):
     """Format-specific passthrough content.
 
-    Rendered verbatim when the output format matches (``"markdown"`` or
-    ``"html"``); skipped otherwise. Use ``format="both"`` to always emit.
+    Rendered verbatim when the output format matches (``"markdown"``,
+    ``"html"`` or ``"latex"``); skipped otherwise. ``format="both"`` emits
+    in both Markdown and HTML.
     """
 
     def __init__(self, content: str, format: str = "both"):
-        if format not in ("markdown", "html", "both"):
-            raise ValueError(f"format must be 'markdown', 'html' or 'both', got {format!r}")
+        if format not in ("markdown", "html", "latex", "both"):
+            raise ValueError(
+                f"format must be 'markdown', 'html', 'latex' or 'both', got {format!r}"
+            )
         self.content = content
         self.format = format
 

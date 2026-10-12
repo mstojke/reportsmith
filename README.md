@@ -1,6 +1,6 @@
 # reportsmith
 
-A small, dependency-free Python library for building reports programmatically and exporting them to **Markdown**, a **standalone styled HTML** document, or (optionally) **PDF**.
+A small, dependency-free Python library for building reports programmatically and exporting them to **Markdown**, a **standalone styled HTML** document, **LaTeX**, or (optionally) **PDF**.
 
 ## Features
 
@@ -9,6 +9,7 @@ A small, dependency-free Python library for building reports programmatically an
 - Inline formatting helpers: `bold()`, `italic()`, `code()`, `link()` — render correctly in both formats
 - Correct escaping everywhere: HTML entities, Markdown table pipes, code fences that widen when the source contains ` ``` `
 - HTML export ships with a clean embedded stylesheet (light/dark aware) that you can replace with your own CSS
+- LaTeX export: a compilable document (pdfLaTeX/XeLaTeX/LuaLaTeX) with booktabs tables, framed code blocks, hyperlinks, and PDF bookmarks — or a body fragment to `\input` into your own document
 - Optional PDF export (`pip install reportsmith[pdf]`, via fpdf2): matching styling, PDF bookmarks from sections, clickable links, auto-detected Unicode system fonts
 - No required dependencies; Python 3.9+
 
@@ -46,9 +47,10 @@ print(report.to_markdown())          # Markdown string
 print(report.to_html())              # standalone HTML page
 report.save_markdown("report.md")
 report.save_html("report.html")
+report.save_latex("report.tex")    # compile with pdflatex/xelatex/lualatex
 ```
 
-Run `python example.py` for a fuller demo that writes `example_report.md` and `example_report.html`.
+Run `python example.py` for a fuller demo that writes `example_report.md`, `example_report.html`, and `example_report.tex`.
 
 ## Documentation
 
@@ -86,7 +88,7 @@ Builder methods (all chainable, also available on sections):
 | `table(headers, rows, caption="", align=None)` | Table; `align` entries are `"left"`, `"center"`, `"right"` |
 | `image(src, alt="", title="")` | Image |
 | `horizontal_rule()` | Rule |
-| `raw(content, format="both")` | Verbatim content for `"markdown"`, `"html"`, or `"both"` |
+| `raw(content, format="both")` | Verbatim content for `"markdown"`, `"html"`, `"latex"`, or `"both"` (Markdown + HTML) |
 | `add(element)` | Any pre-built element |
 
 Anywhere text is accepted you may pass a plain string or a list mixing strings with `bold()`, `italic()`, `code()`, and `link(text, href)` spans.
@@ -95,12 +97,13 @@ Anywhere text is accepted you may pass a plain string or a list mixing strings w
 
 - `report.to_markdown()` → GitHub-flavored Markdown string
 - `report.to_html(full_document=True, css=None)` → HTML string; `full_document=False` returns just the body fragment, `css=` replaces the default stylesheet
+- `report.to_latex(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False)` → LaTeX source; `full_document=False` returns just the body, `preamble=` is appended to the built-in preamble
 - `report.to_pdf(fonts=None, mono_fonts=None)` → PDF bytes (requires the `pdf` extra); pass TTF path quadruples to control typefaces
-- `report.save_markdown(path)` / `report.save_html(path, ...)` / `report.save_pdf(path, ...)` → write to a file, return the `Path`
+- `report.save_markdown(path)` / `report.save_html(path, ...)` / `report.save_latex(path, ...)` / `report.save_pdf(path, ...)` → write to a file, return the `Path`
 
 ## Running tests
 
-The test suite (93 tests, 100% line coverage) lives in `tests/`:
+The test suite (151 tests) lives in `tests/`:
 
 ```bash
 python -m pytest

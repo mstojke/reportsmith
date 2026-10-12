@@ -1,8 +1,8 @@
 """reportsmith — a small, dependency-free library for building reports.
 
 Build a report programmatically from typed elements (headings, paragraphs,
-tables, lists, code blocks, images, ...) and export it to Markdown or a
-standalone styled HTML document.
+tables, lists, code blocks, images, ...) and export it to Markdown, a
+standalone styled HTML document, LaTeX, or PDF.
 
 Quick start::
 
@@ -34,8 +34,9 @@ from .report import Report
 from .renderers.markdown import MarkdownRenderer
 from .renderers.html import HtmlRenderer
 from .renderers.pdf import PdfRenderer
+from .renderers.latex import LatexRenderer
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "Report",
@@ -57,4 +58,5 @@ __all__ = [
     "MarkdownRenderer",
     "HtmlRenderer",
     "PdfRenderer",
+    "LatexRenderer",
 ]

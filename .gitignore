@@ -4,3 +4,5 @@ dist/
 reportsmith.egg-info/
 
 .coverage
+example_report.pdf
+example_report.tex

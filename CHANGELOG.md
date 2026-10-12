@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-26
+
+### Added
+
+- LaTeX export (`to_latex()` / `save_latex()`, `LatexRenderer`): a
+  standalone document that compiles with pdfLaTeX, XeLaTeX, or LuaLaTeX, or
+  a body fragment with `full_document=False`. Options for the document
+  class, class options, extra preamble, and section numbering. Uses
+  `booktabs`/`longtable` tables, framed `fancyvrb` code blocks, `hyperref`
+  links and bookmarks, and figures for images; all text is LaTeX-escaped.
+- `raw(content, format="latex")` for LaTeX-only passthrough content.
+
 ## [0.1.0] - 2026-08-26
 
 ### Added

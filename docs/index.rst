@@ -3,7 +3,8 @@ reportsmith
 ===========
 
 A small, dependency-free Python library for building reports programmatically
-and exporting them to **Markdown** or a **standalone styled HTML** document.
+and exporting them to **Markdown**, a **standalone styled HTML** document,
+**LaTeX**, or **PDF**.
 
 .. code-block:: python
 

@@ -1,6 +1,6 @@
 # reportsmith — User Guide
 
-`reportsmith` lets you build a report programmatically from typed elements and export it to **Markdown** or a **standalone styled HTML page**. It has no dependencies and works on Python 3.9+.
+`reportsmith` lets you build a report programmatically from typed elements and export it to **Markdown**, a **standalone styled HTML page**, **LaTeX**, or **PDF**. It has no dependencies and works on Python 3.9+.
 
 This guide walks through every feature. For a terse signature-level listing, see the [API reference](api-reference.rst).
 
@@ -14,9 +14,10 @@ This guide walks through every feature. For a terse signature-level listing, see
 6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules)
 7. [Raw passthrough content](#raw-passthrough-content)
 8. [Exporting](#exporting)
-9. [Exporting to PDF](#exporting-to-pdf)
-10. [Customizing the HTML output](#customizing-the-html-output)
-11. [Escaping and safety](#escaping-and-safety)
+9. [Exporting to LaTeX](#exporting-to-latex)
+10. [Exporting to PDF](#exporting-to-pdf)
+11. [Customizing the HTML output](#customizing-the-html-output)
+12. [Escaping and safety](#escaping-and-safety)
 
 ---
 
@@ -143,10 +144,11 @@ s.horizontal_rule()
 ```python
 report.raw("<details><summary>More</summary>…</details>", format="html")
 report.raw("[TOC]", format="markdown")   # e.g. a marker your MD pipeline expands
-report.raw("---", format="both")         # default: emitted in both formats
+report.raw("\\newpage", format="latex")  # LaTeX export only
+report.raw("---", format="both")         # default: emitted in Markdown and HTML
 ```
 
-Content with a non-matching format is silently skipped, so a single report definition can carry format-specific extras for both exports.
+Content with a non-matching format is silently skipped, so a single report definition can carry format-specific extras for every export. `"both"` means Markdown and HTML only — LaTeX only receives `format="latex"` content, and PDF skips raw content entirely.
 
 ## Exporting
 
@@ -172,7 +174,34 @@ MarkdownRenderer().render(report)
 HtmlRenderer(full_document=False).render(report)
 ```
 
-## Exporting to PDF
+## Exporting to LaTeX
+
+LaTeX export needs no extra dependencies — it produces `.tex` source that you compile with your own TeX distribution:
+
+```python
+latex_text = report.to_latex()
+report.save_latex("report.tex")
+```
+
+```bash
+pdflatex report.tex
+```
+
+The document compiles with pdfLaTeX, XeLaTeX, or LuaLaTeX. It uses the `article` class with a `\maketitle` title block (subtitle under the title, author, date), `booktabs` tables via `longtable` (they break across pages and repeat the header), framed `fancyvrb` code blocks, `hyperref` links, and PDF bookmarks from sections. Run the compiler twice if a long table's column widths look off — `longtable` settles widths on the second pass.
+
+Options (on `to_latex()`, `save_latex()`, and `LatexRenderer`):
+
+- `full_document=False` returns only the body (sections onward — no preamble, title block, or `\begin{document}`), ready to `\input` into your own document. Your document then needs the packages listed in `reportsmith.renderers.latex.DEFAULT_PREAMBLE`.
+- `document_class="report"` / `class_options="12pt,letterpaper"` change the `\documentclass` line.
+- `preamble="..."` is appended after the built-in preamble, e.g. `preamble="\\usepackage{amsmath}"` or `\\renewcommand` tweaks.
+- `numbered=True` numbers sections; by default they are unnumbered (but still bookmarked).
+
+Details and limitations:
+
+- **Section depth** maps to `\section`, `\subsection`, `\subsubsection`, `\paragraph`, `\subparagraph`.
+- **Images** are embedded with `\includegraphics` in a figure (the title, or else the alt text, becomes the caption) and scaled down to the text width if needed. Paths are resolved relative to where you compile, and a missing file is a compile error. `http(s)://` images can't be embedded, so they render as a link instead.
+- **Lists** nest at most four levels deep (a LaTeX limit). Empty lists are omitted.
+- **Multi-line table cells** are rendered as stacked lines within the cell.
 
 PDF export is an optional extra built on [fpdf2](https://py-pdf.github.io/fpdf2/):
 
@@ -200,7 +229,7 @@ Details and limitations:
 
 - **Table cells** render inline spans as plain text (no bold/links inside PDF table cells).
 - **Missing images** render as a `[Image: alt]` placeholder instead of failing the export.
-- **`raw(...)` content is skipped** — Markdown/HTML passthrough has no meaning in PDF.
+- **`raw(...)` content is skipped** — Markdown/HTML/LaTeX passthrough has no meaning in PDF.
 - Without fpdf2 installed, `to_pdf()` raises `ImportError` with the install hint; the rest of the library is unaffected.
 
 ## Customizing the HTML output
@@ -222,6 +251,7 @@ All user text is escaped for the target format automatically:
 
 - **HTML**: `<`, `>`, `&` in text and quotes in attributes are entity-escaped, including inside code blocks, table cells, link hrefs, image attributes, and the document `<title>`. Untrusted strings placed in normal elements cannot inject markup.
 - **Markdown**: pipes in table cells are escaped; code fences widen when the source contains a fence.
+- **LaTeX**: `\ & % $ # _ { } ~ ^` and square brackets are escaped in all text, metadata, and captions; link targets are escaped for `\href`; code blocks escape only `\ { }`, so source containing `\end{Verbatim}` can't break out.
 
 The one deliberate exception is `raw(...)`, which is emitted verbatim — only pass trusted content to it.
 
