@@ -21,7 +21,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/mstojke/reportsmith"
-Documentation = "https://github.com/mstojke/reportsmith/blob/main/docs/user-guide.md"
+Documentation = "https://reportsmith.readthedocs.io/en/latest/index.html"
 Changelog = "https://github.com/mstojke/reportsmith/blob/main/CHANGELOG.md"
 Issues = "https://github.com/mstojke/reportsmith/issues"
 
