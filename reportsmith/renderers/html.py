@@ -6,6 +6,7 @@ from html import escape
 from typing import TYPE_CHECKING, Optional
 
 from ..elements import (
+    Callout,
     CodeBlock,
     Element,
     Heading,
@@ -76,6 +77,24 @@ nav.toc ul { list-style: none; margin: 0; padding-left: 1.2em; }
 nav.toc > ul { padding-left: 0; }
 nav.toc a { text-decoration: none; }
 nav.toc a:hover { text-decoration: underline; }
+.callout { --callout: var(--accent); border-left: 4px solid var(--callout); border-radius: 6px; background: var(--code-bg); padding: 0.6em 1em; margin: 1em 0; }
+.callout > :last-child { margin-bottom: 0; }
+.callout-title { color: var(--callout); font-weight: 600; margin: 0 0 0.3em; }
+.callout-note { --callout: #1d4ed8; }
+.callout-tip { --callout: #15803d; }
+.callout-important { --callout: #7c3aed; }
+.callout-warning { --callout: #b45309; }
+.callout-caution { --callout: #b91c1c; }
+@media (prefers-color-scheme: dark) {
+  .callout-note { --callout: #60a5fa; }
+  .callout-tip { --callout: #4ade80; }
+  .callout-important { --callout: #a78bfa; }
+  .callout-warning { --callout: #fbbf24; }
+  .callout-caution { --callout: #f87171; }
+}
+sup.footnote-ref a { text-decoration: none; }
+.footnotes { color: var(--muted); font-size: 0.9rem; margin-top: 3em; }
+.footnote-back { text-decoration: none; }
 """
 
 
@@ -121,8 +140,17 @@ class HtmlRenderer:
             meta.append(f"<div><strong>Date:</strong> {escape(report.date)}</div>")
         if meta:
             parts.append('<div class="report-meta">\n' + "\n".join(meta) + "\n</div>\n")
+        self._footnotes: list[str] = []
         for child in report.children:
             parts.append(self._render_element(child))
+        if self._footnotes:
+            parts.append('<section class="footnotes">\n<hr>\n<ol>\n')
+            for n, text in enumerate(self._footnotes, start=1):
+                parts.append(
+                    f'<li id="fn-{n}">{escape(text)} <a href="#fnref-{n}" '
+                    f'class="footnote-back" aria-label="Back to reference {n}">&#8617;&#xFE0E;</a></li>\n'
+                )
+            parts.append("</ol>\n</section>\n")
         return "".join(parts)
 
     # -- elements --------------------------------------------------------
@@ -158,6 +186,14 @@ class HtmlRenderer:
             return el.content + "\n" if el.format in ("html", "both") else ""
         if isinstance(el, TableOfContents):
             return self._toc(el)
+        if isinstance(el, Callout):
+            out = [
+                f'<div class="callout callout-{el.kind}">\n',
+                f'<p class="callout-title">{escape(el.display_title)}</p>\n',
+            ]
+            out.extend(self._render_element(child) for child in el.children)
+            out.append("</div>\n")
+            return "".join(out)
         raise TypeError(f"Cannot render element of type {type(el).__name__}")
 
     def _id(self, el: Element) -> str:
@@ -174,10 +210,12 @@ class HtmlRenderer:
             out.append("<ul>\n")
             for entry in entries:
                 anchor = escape(self._anchors[id(entry.element)], quote=True)
-                # Links can't nest inside the entry's own <a>; keep their text.
+                # Links can't nest inside the entry's own <a>; keep their
+                # text. Footnote markers belong to the heading, not the TOC.
                 parts = [
                     p.text if isinstance(p, Inline) and p.style == "link" else p
                     for p in entry.parts
+                    if not (isinstance(p, Inline) and p.style == "footnote")
                 ]
                 out.append(f'<li><a href="#{anchor}">{self._inline(parts)}</a>')
                 if entry.children:
@@ -246,4 +284,14 @@ class HtmlRenderer:
             return f"<code>{text}</code>"
         if span.style == "link":
             return f'<a href="{escape(span.href, quote=True)}">{text}</a>'
+        if span.style == "strike":
+            return f"<del>{text}</del>"
+        if span.style in ("sub", "sup"):
+            return f"<{span.style}>{text}</{span.style}>"
+        if span.style == "footnote":
+            self._footnotes.append(span.text)
+            n = len(self._footnotes)
+            return (
+                f'<sup class="footnote-ref"><a href="#fn-{n}" id="fnref-{n}">{n}</a></sup>'
+            )
         return text

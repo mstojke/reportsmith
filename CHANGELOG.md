@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Callouts (`callout(kind, content=None, title="")`, `Callout`) in five
+  kinds: note, tip, important, warning, caution. Usable as a context
+  manager to hold paragraphs, lists, code, tables and nested callouts.
+  Markdown renders GitHub alerts (`> [!NOTE]`); HTML a coloured box styled
+  for light and dark mode; LaTeX a breakable `tcolorbox`; PDF a coloured
+  bar and title that continue across page breaks.
+- Inline styles `strike()`, `sub()` and `sup()`, rendered natively in all
+  four formats.
+- Footnotes (`footnote(text)`), numbered in document order: GitHub `[^n]`
+  footnotes in Markdown, a linked notes list in HTML, `\footnote` in LaTeX
+  (with a footnote-free short title for headings), and linked endnotes in
+  PDF. Footnotes are kept out of TOC entries and heading anchors.
+
+### Changed
+
+- The LaTeX preamble now also loads `ulem` (with `normalem`, so `\emph`
+  is unchanged) and `tcolorbox`, and defines the `rscallout` environment.
+
 ## [0.3.0] - 2026-10-15
 
 ### Added

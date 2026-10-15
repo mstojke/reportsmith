@@ -1,4 +1,5 @@
-"""Inline (span-level) content: bold, italic, code, links.
+"""Inline (span-level) content: bold, italic, code, links, strikethrough,
+subscript, superscript and footnotes.
 
 Block elements accept either a plain string or a list mixing strings and
 :class:`Inline` objects, so the same content renders correctly in both
@@ -17,7 +18,8 @@ TextLike = Union[str, "Inline", Sequence[InlineContent]]
 
 @dataclass(frozen=True)
 class Inline:
-    """A span of text with a style: 'bold', 'italic', 'code', or 'link'."""
+    """A span of text with a style: 'bold', 'italic', 'code', 'link',
+    'strike', 'sub', 'sup' or 'footnote' (whose text is the note itself)."""
 
     style: str
     text: str
@@ -42,6 +44,27 @@ def code(text: str) -> Inline:
 def link(text: str, href: str) -> Inline:
     """Hyperlink span."""
     return Inline("link", text, href)
+
+
+def strike(text: str) -> Inline:
+    """Strikethrough text span."""
+    return Inline("strike", text)
+
+
+def sub(text: str) -> Inline:
+    """Subscript text span, e.g. the 2 in H2O."""
+    return Inline("sub", text)
+
+
+def sup(text: str) -> Inline:
+    """Superscript text span, e.g. the 2 in m2."""
+    return Inline("sup", text)
+
+
+def footnote(text: str) -> Inline:
+    """A footnote: renders as a numbered marker where it is placed, with
+    ``text`` shown as the note (numbered in document order)."""
+    return Inline("footnote", text)
 
 
 def normalize(content: TextLike) -> list[InlineContent]:

@@ -12,8 +12,8 @@ Everything documented here is importable from the top-level package:
    from reportsmith import (
        Report, Section,
        Heading, Paragraph, Quote, CodeBlock, ListElement, Table, Image,
-       HorizontalRule, Raw, TableOfContents,
-       Inline, bold, italic, code, link,
+       HorizontalRule, Raw, TableOfContents, Callout,
+       Inline, bold, italic, code, link, strike, sub, sup, footnote,
        MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer,
    )
 
@@ -155,6 +155,12 @@ Container (builder API)
 
       Add a :class:`TableOfContents` for the whole report.
 
+   .. py:method:: callout(kind="note", content=None, title="") -> Callout
+
+      Add a :class:`Callout`. Returns the *new* callout (not the
+      container), usable as a context manager, so more content can be
+      added to it.
+
    .. py:method:: add(element) -> Container
 
       Append any pre-built :class:`Element`.
@@ -283,6 +289,28 @@ render-agnostic.
 
    :raises ValueError: unless ``1 <= depth <= 5``.
 
+.. py:class:: Callout(kind="note", content=None, title="", level=1)
+
+   A highlighted box holding block content. Includes the builder API from
+   :class:`Container` and supports ``with``.
+
+   :param str kind: ``"note"``, ``"tip"``, ``"important"``, ``"warning"``
+      or ``"caution"``.
+   :param content: Optional ``TextLike``; becomes the first paragraph.
+   :param str title: Shown above the content; defaults to the capitalized
+      kind (see ``display_title``).
+   :raises ValueError: for any other ``kind``.
+   :raises TypeError: from ``section()``, ``toc()``, or ``add()`` with a
+      :class:`Section` or :class:`TableOfContents` — callouts never affect
+      the document outline. Use ``heading()`` for a heading inside one.
+
+   Markdown: a GitHub alert (``> [!NOTE]``); a custom title becomes a bold
+   first line. HTML: ``<div class="callout callout-KIND">`` with a
+   ``callout-title`` paragraph, styled per kind by the default stylesheet.
+   LaTeX: a breakable ``tcolorbox`` (``rscallout`` environment defined in
+   the built-in preamble). PDF: a coloured bar and title that continue
+   across page breaks.
+
 Inline spans
 ============
 
@@ -306,6 +334,26 @@ Inline spans
 .. py:function:: link(text, href) -> Inline
 
    Markdown ``[text](href)``; HTML ``<a href="...">``.
+
+.. py:function:: strike(text) -> Inline
+
+   Markdown ``~~text~~``; HTML ``<del>``; LaTeX ``\sout`` (``ulem``).
+
+.. py:function:: sub(text) -> Inline
+.. py:function:: sup(text) -> Inline
+
+   Subscript / superscript. Markdown and HTML ``<sub>`` / ``<sup>``;
+   LaTeX ``\textsubscript`` / ``\textsuperscript``.
+
+.. py:function:: footnote(text) -> Inline
+
+   A footnote whose note is *text*, numbered in document order and shown
+   as a marker where it is placed. Markdown: ``[^n]`` with definitions at
+   the end. HTML: linked superscript markers and a ``<section
+   class="footnotes">`` list. LaTeX: ``\footnote`` (headings get a short
+   title without it for the TOC and bookmarks). PDF: linked superscript
+   markers and a "Notes" section at the end. Footnotes are left out of TOC
+   entries and heading anchors.
 
 Renderers
 =========

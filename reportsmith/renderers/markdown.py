@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from html import escape
 from typing import TYPE_CHECKING
 
 from ..elements import (
+    Callout,
     CodeBlock,
     Element,
     Heading,
@@ -33,12 +35,19 @@ class MarkdownRenderer:
     def render(self, report: "Report") -> str:
         self._report = report
         self._anchors = heading_anchors(report)
+        self._footnotes: list[str] = []
         blocks: list[str] = [f"# {report.title}"]
         meta = self._metadata_lines(report)
         if meta:
             blocks.append("\n".join(meta))
         for child in report.children:
             blocks.extend(self._render_element(child))
+        if self._footnotes:
+            # GFM footnote definitions; continuation lines are indented.
+            blocks.append("\n".join(
+                f"[^{n}]: " + text.replace("\n", "\n    ")
+                for n, text in enumerate(self._footnotes, start=1)
+            ))
         return "\n\n".join(blocks) + "\n"
 
     def _metadata_lines(self, report: "Report") -> list[str]:
@@ -85,7 +94,22 @@ class MarkdownRenderer:
             return [el.content] if el.format in ("markdown", "both") else []
         if isinstance(el, TableOfContents):
             return self._toc(el)
+        if isinstance(el, Callout):
+            return [self._callout(el)]
         raise TypeError(f"Cannot render element of type {type(el).__name__}")
+
+    def _callout(self, el: Callout) -> str:
+        # GitHub alert syntax; other renderers show it as a block quote.
+        # Alerts have no custom titles, so a title becomes a bold first line.
+        lines = [f"[!{el.kind.upper()}]"]
+        if el.title:
+            lines.append(f"**{el.title}**")
+        blocks = [b for child in el.children for b in self._render_element(child)]
+        if blocks:
+            if el.title:
+                lines.append("")
+            lines.extend("\n\n".join(blocks).split("\n"))
+        return "\n".join(f"> {line}" if line else ">" for line in lines)
 
     def _toc(self, el: TableOfContents) -> list[str]:
         blocks = [f"**{el.title}**"] if el.title else []
@@ -151,4 +175,12 @@ class MarkdownRenderer:
             return f"`{span.text}`"
         if span.style == "link":
             return f"[{span.text}]({span.href})"
+        if span.style == "strike":
+            return f"~~{span.text}~~"
+        if span.style in ("sub", "sup"):
+            # No Markdown syntax; GitHub and most renderers accept the tags.
+            return f"<{span.style}>{escape(span.text, quote=False)}</{span.style}>"
+        if span.style == "footnote":
+            self._footnotes.append(span.text)
+            return f"[^{len(self._footnotes)}]"
         return span.text

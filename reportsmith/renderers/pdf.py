@@ -18,6 +18,7 @@ import os
 from typing import TYPE_CHECKING, Optional, Sequence
 
 from ..elements import (
+    Callout,
     CodeBlock,
     Element,
     Heading,
@@ -50,6 +51,15 @@ _MUTED = (107, 114, 128)
 _ACCENT = (29, 78, 216)
 _BORDER = (183, 189, 196)
 _CODE_BG = (243, 244, 246)
+_CALLOUT_COLORS = {
+    "note": (29, 78, 216),
+    "tip": (21, 128, 61),
+    "important": (124, 58, 237),
+    "warning": (180, 83, 9),
+    "caution": (185, 28, 28),
+}
+_SUPERSCRIPT = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
+_SUBSCRIPT = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
 
 _WIN_FONTS = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
 _MAC_FONTS = "/System/Library/Fonts/Supplemental"
@@ -116,6 +126,7 @@ class PdfRenderer:
         self._toc_entries = collect_entries(report, self._toc.depth) if self._toc else []
         self._toc_ids = {id(entry.element) for entry in self._toc_entries}
         self._toc_targets: dict[int, tuple[int, int]] = {}  # id -> (link, page)
+        self._footnotes: list[tuple[str, int]] = []  # (text, link)
         pdf.add_page()
         pdf.set_title(report.title)
         if report.author:
@@ -123,6 +134,8 @@ class PdfRenderer:
         self._title_block(pdf, report)
         for child in report.children:
             self._element(pdf, child)
+        if self._footnotes:
+            self._endnotes(pdf)
         return bytes(pdf.output())
 
     # -- setup -----------------------------------------------------------
@@ -209,6 +222,8 @@ class PdfRenderer:
             pdf.ln(4)
         elif isinstance(el, Raw):
             pass  # format-specific passthrough has no meaning in PDF
+        elif isinstance(el, Callout):
+            self._callout(pdf, el)
         elif isinstance(el, TableOfContents):
             if el is self._toc:
                 # The TOC is drawn after the rest of the document, once page
@@ -280,6 +295,39 @@ class PdfRenderer:
             text = text[:-1]
         return text.rstrip() + ellipsis
 
+    def _callout(self, pdf, el: Callout) -> None:
+        color = _CALLOUT_COLORS[el.kind]
+        root = pdf.l_margin
+        self._keep_with_next(pdf)
+        pdf.ln(1)
+        start_page, start_y = pdf.page_no(), pdf.get_y()
+        pdf.set_left_margin(root + 5)
+        pdf.set_x(root + 5)
+        pdf.set_font(self.body_family, "B", BODY_SIZE)
+        pdf.set_text_color(*color)
+        pdf.multi_cell(0, 6.5, self._t(el.display_title), new_x="LMARGIN", new_y="NEXT")
+        for child in el.children:
+            self._element(pdf, child)
+        end_page, end_y = pdf.page_no(), pdf.get_y()
+        pdf.set_left_margin(root)
+        # The coloured bar runs down the left edge, continuing across page
+        # breaks: go back to each page the callout touched and draw on it.
+        for page in range(start_page, end_page + 1):
+            pdf.page = page
+            # fpdf2 only writes colour/width when they change, and a revisited
+            # page's stream may hold other values, so force both to be written.
+            pdf.set_draw_color(*(255 - c for c in color))
+            pdf.set_draw_color(*color)
+            pdf.set_line_width(0.5)
+            pdf.set_line_width(1)
+            top = start_y if page == start_page else pdf.t_margin
+            bottom = end_y if page == end_page else pdf.h - pdf.b_margin
+            pdf.line(root + 1.5, top, root + 1.5, bottom)
+        pdf.page = end_page
+        pdf.set_line_width(0.2)
+        pdf.set_y(end_y)
+        pdf.ln(2)
+
     def _keep_with_next(self, pdf) -> None:
         # Avoid a heading orphaned at the bottom of a page.
         if pdf.get_y() > pdf.h - PAGE_MARGIN - 30:
@@ -332,11 +380,11 @@ class PdfRenderer:
         with pdf.table(text_align=aligns, line_height=6) as table:
             header = table.row()
             for parts in el.headers:
-                header.cell(self._t(self._plain(parts)))
+                header.cell(self._t(self._cell_text(pdf, parts)))
             for row_parts in el.rows:
                 row = table.row()
                 for parts in row_parts:
-                    row.cell(self._t(self._plain(parts)))
+                    row.cell(self._t(self._cell_text(pdf, parts)))
         if el.caption:
             pdf.ln(1)
             pdf.set_font(self.body_family, "I", 9)
@@ -388,6 +436,22 @@ class PdfRenderer:
                     pdf.set_text_color(*_ACCENT)
                     pdf.write(h, text, link=part.href)
                     pdf.set_text_color(*color)
+                elif part.style == "strike":
+                    pdf.set_font(self.body_family, self._merge(base_style, "S"), size)
+                    pdf.write(h, text)
+                elif part.style in ("sub", "sup"):
+                    pdf.set_font(self.body_family, base_style, size)
+                    pdf.char_vpos = part.style.upper()
+                    pdf.write(h, text)
+                    pdf.char_vpos = "LINE"
+                elif part.style == "footnote":
+                    n, link = self._add_footnote(pdf, part.text)
+                    pdf.set_font(self.body_family, base_style, size)
+                    pdf.set_text_color(*_ACCENT)
+                    pdf.char_vpos = "SUP"
+                    pdf.write(h, str(n), link=link)
+                    pdf.char_vpos = "LINE"
+                    pdf.set_text_color(*color)
                 else:
                     pdf.set_font(self.body_family, base_style, size)
                     pdf.write(h, text)
@@ -397,8 +461,52 @@ class PdfRenderer:
 
     @staticmethod
     def _merge(base: str, extra: str) -> str:
-        return "".join(s for s in ("B", "I", "U") if s in base or s in extra)
+        return "".join(s for s in ("B", "I", "U", "S") if s in base or s in extra)
 
     @staticmethod
     def _plain(parts: list[InlineContent]) -> str:
-        return "".join(p.text if isinstance(p, Inline) else str(p) for p in parts)
+        return plain_text(parts)
+
+    def _cell_text(self, pdf, parts: list[InlineContent]) -> str:
+        """Plain text for table cells, which can't mix styles: footnotes
+        become superscript-digit markers, other spans keep their text."""
+        out = []
+        for p in parts:
+            if isinstance(p, Inline) and p.style == "footnote":
+                n, _ = self._add_footnote(pdf, p.text)
+                marker = str(n).translate(_SUPERSCRIPT)
+                out.append(marker if self._has_glyphs(pdf, marker) else f"[{n}]")
+            elif isinstance(p, Inline) and p.style in ("sub", "sup") and p.text.isdigit():
+                # Digits have Unicode sub/superscript forms (CO₂, m²), but
+                # not every font has them (Arial lacks subscripts).
+                mapped = p.text.translate(_SUPERSCRIPT if p.style == "sup" else _SUBSCRIPT)
+                out.append(mapped if self._has_glyphs(pdf, mapped) else p.text)
+            else:
+                out.append(p.text if isinstance(p, Inline) else str(p))
+        return "".join(out)
+
+    def _has_glyphs(self, pdf, text: str) -> bool:
+        if not self.unicode:
+            return False
+        cmap = getattr(pdf.current_font, "cmap", None)
+        return cmap is not None and all(ord(ch) in cmap for ch in text)
+
+    # -- footnotes -------------------------------------------------------
+
+    def _add_footnote(self, pdf, text: str) -> tuple[int, int]:
+        # PDF has no automatic page-bottom footnotes, so notes are collected
+        # here and rendered as linked endnotes after the content.
+        link = pdf.add_link()
+        self._footnotes.append((text, link))
+        return len(self._footnotes), link
+
+    def _endnotes(self, pdf) -> None:
+        self._keep_with_next(pdf)
+        pdf.start_section(self._t("Notes"), level=0)
+        self._heading(pdf, ["Notes"], 2)
+        for n, (text, link) in enumerate(self._footnotes, start=1):
+            pdf.set_link(link, y=pdf.get_y(), page=pdf.page_no())
+            pdf.set_font(self.body_family, "", 10)
+            pdf.set_text_color(*_TEXT)
+            pdf.multi_cell(0, 5.5, self._t(f"{n}. {text}"), new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(1)

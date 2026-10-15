@@ -26,7 +26,13 @@ class TocEntry:
 
 
 def plain_text(parts: list[InlineContent]) -> str:
-    return "".join(p.text if isinstance(p, Inline) else str(p) for p in parts)
+    """Text of inline content; footnotes are dropped, since a footnote's
+    text is the note rather than part of the sentence."""
+    return "".join(
+        p.text if isinstance(p, Inline) else str(p)
+        for p in parts
+        if not (isinstance(p, Inline) and p.style == "footnote")
+    )
 
 
 def iter_headings(container: Container) -> Iterator[Union[Section, Heading]]:

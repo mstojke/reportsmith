@@ -304,6 +304,16 @@ class Container(Element):
         self.children.append(TableOfContents(title, depth))
         return self
 
+    def callout(
+        self, kind: str = "note", content: Optional[TextLike] = None, title: str = ""
+    ) -> "Callout":
+        """Add a callout box. ``content``, if given, becomes its first
+        paragraph; returns the new callout (usable as a context manager) so
+        more content can be added to it."""
+        callout = Callout(kind, content, title, level=self._level)
+        self.children.append(callout)
+        return callout
+
 
 class Section(Container):
     """A titled group of elements; nests to any depth.
@@ -318,6 +328,58 @@ class Section(Container):
         self._level = min(level, 6)
 
     def __enter__(self) -> "Section":
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        return None
+
+
+CALLOUT_KINDS = ("note", "tip", "important", "warning", "caution")
+
+
+class Callout(Container):
+    """A highlighted box — note, tip, important, warning or caution —
+    holding block content (paragraphs, lists, code, tables, ...).
+
+    ``title`` defaults to the capitalized kind. Supports ``with`` syntax
+    like :class:`Section`. Callouts can't contain sections or a table of
+    contents, so they never affect the document outline.
+    """
+
+    def __init__(
+        self,
+        kind: str = "note",
+        content: Optional[TextLike] = None,
+        title: str = "",
+        level: int = 1,
+    ):
+        if kind not in CALLOUT_KINDS:
+            raise ValueError(
+                f"kind must be one of {', '.join(map(repr, CALLOUT_KINDS))}, got {kind!r}"
+            )
+        super().__init__()
+        self.kind = kind
+        self.title = title
+        self._level = level  # headings inside default to the parent's child level
+        if content is not None:
+            self.paragraph(content)
+
+    @property
+    def display_title(self) -> str:
+        return self.title or self.kind.capitalize()
+
+    def add(self, element: Element) -> "Container":
+        if isinstance(element, (Section, TableOfContents)):
+            raise TypeError(f"A callout cannot contain a {type(element).__name__}")
+        return super().add(element)
+
+    def section(self, title: TextLike) -> "Section":
+        raise TypeError("A callout cannot contain sections; use heading() instead")
+
+    def toc(self, title: str = "Contents", depth: int = 3) -> "Container":
+        raise TypeError("A callout cannot contain a table of contents")
+
+    def __enter__(self) -> "Callout":
         return self
 
     def __exit__(self, *exc_info) -> None:
