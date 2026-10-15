@@ -8,9 +8,14 @@ with the same methods.
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Mapping
+from pathlib import Path
+from typing import IO, TYPE_CHECKING, Any, Iterable, Optional, Sequence, Union
 
 from .inline import InlineContent, TextLike, normalize
+
+if TYPE_CHECKING:
+    from .data import Formats, Headers
 
 
 class Element:
@@ -78,6 +83,85 @@ class Table(Element):
                 if a not in ("left", "center", "right"):
                     raise ValueError(f"Invalid alignment: {a!r}")
         self.align = list(align) if align is not None else ["left"] * width
+
+    # -- construction from data ------------------------------------------
+    # Shared options: ``columns`` selects and orders columns; ``headers``
+    # relabels them (a list, or a column -> label mapping); ``formats`` is a
+    # format string / callable applied to every numeric cell, or a
+    # column -> format mapping applied to every value in that column;
+    # ``missing`` replaces None/NaN/NA; ``align=None`` right-aligns numeric
+    # columns and left-aligns the rest.
+
+    @classmethod
+    def from_records(
+        cls,
+        records: Iterable[Mapping[Any, Any]],
+        columns: Optional[Sequence[Any]] = None,
+        *,
+        headers: Headers = None,
+        formats: Formats = None,
+        align: Optional[Sequence[str]] = None,
+        missing: str = "",
+        caption: str = "",
+    ) -> "Table":
+        """Build a table from a sequence of dicts (keys become headers)."""
+        from .data import from_records
+
+        return from_records(
+            records, columns, headers=headers, formats=formats,
+            align=align, missing=missing, caption=caption,
+        )
+
+    @classmethod
+    def from_csv(
+        cls,
+        source: Union[str, Path, IO[str]],
+        columns: Optional[Sequence[str]] = None,
+        *,
+        delimiter: str = ",",
+        encoding: str = "utf-8",
+        parse_numbers: bool = True,
+        headers: Headers = None,
+        formats: Formats = None,
+        align: Optional[Sequence[str]] = None,
+        missing: str = "",
+        caption: str = "",
+    ) -> "Table":
+        """Build a table from a CSV file path or open text file.
+
+        The first row is the header. With ``parse_numbers=True`` numeric
+        fields become numbers (so formats and auto-alignment apply);
+        integers with leading zeros stay text.
+        """
+        from .data import from_csv
+
+        return from_csv(
+            source, columns, delimiter=delimiter, encoding=encoding,
+            parse_numbers=parse_numbers, headers=headers, formats=formats,
+            align=align, missing=missing, caption=caption,
+        )
+
+    @classmethod
+    def from_dataframe(
+        cls,
+        df: Any,
+        columns: Optional[Sequence[Any]] = None,
+        *,
+        index: bool = False,
+        headers: Headers = None,
+        formats: Formats = None,
+        align: Optional[Sequence[str]] = None,
+        missing: str = "",
+        caption: str = "",
+    ) -> "Table":
+        """Build a table from a pandas DataFrame (pandas is not required by
+        reportsmith itself). ``index=True`` adds the index as the first column."""
+        from .data import from_dataframe
+
+        return from_dataframe(
+            df, columns, index=index, headers=headers, formats=formats,
+            align=align, missing=missing, caption=caption,
+        )
 
 
 class Image(Element):
@@ -174,6 +258,33 @@ class Container(Element):
         align: Optional[Sequence[str]] = None,
     ) -> "Container":
         self.children.append(Table(headers, rows, caption, align))
+        return self
+
+    def table_from_records(
+        self,
+        records: Iterable[Mapping[Any, Any]],
+        columns: Optional[Sequence[Any]] = None,
+        **options: Any,
+    ) -> "Container":
+        """Add a table built from dicts; see :meth:`Table.from_records`."""
+        self.children.append(Table.from_records(records, columns, **options))
+        return self
+
+    def table_from_csv(
+        self,
+        source: Union[str, Path, IO[str]],
+        columns: Optional[Sequence[str]] = None,
+        **options: Any,
+    ) -> "Container":
+        """Add a table read from CSV; see :meth:`Table.from_csv`."""
+        self.children.append(Table.from_csv(source, columns, **options))
+        return self
+
+    def table_from_dataframe(
+        self, df: Any, columns: Optional[Sequence[Any]] = None, **options: Any
+    ) -> "Container":
+        """Add a table built from a DataFrame; see :meth:`Table.from_dataframe`."""
+        self.children.append(Table.from_dataframe(df, columns, **options))
         return self
 
     def image(self, src: str, alt: str = "", title: str = "") -> "Container":

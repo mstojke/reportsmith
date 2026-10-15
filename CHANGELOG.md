@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-15
+
 ### Added
 
 - Table of contents (`toc(title="Contents", depth=3)`, `TableOfContents`)
@@ -15,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   heading anchors; HTML gets a styled `<nav class="toc">` with matching
   heading `id`s; LaTeX gets `\tableofcontents` with `tocdepth`; PDF gets
   clickable entries with page numbers, spanning as many pages as needed.
+- Tables from data: `table_from_records()`, `table_from_csv()` and
+  `table_from_dataframe()` (also `Table.from_records()` etc.). Options to
+  select and relabel columns, format numbers per column or globally, set a
+  placeholder for None/NaN/NA, and right-align numeric columns
+  automatically. CSV numbers are parsed per column, keeping IDs with
+  leading zeros as text. pandas is supported without being a dependency.
 
 ## [0.2.0] - 2026-08-26
 

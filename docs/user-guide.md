@@ -9,7 +9,7 @@ This guide walks through every feature. For a terse signature-level listing, see
 1. [Creating a report](#creating-a-report)
 2. [Sections](#sections)
 3. [Text and inline formatting](#text-and-inline-formatting)
-4. [Tables](#tables)
+4. [Tables](#tables) — including [tables from data](#tables-from-data)
 5. [Lists](#lists)
 6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules)
 7. [Table of contents](#table-of-contents)
@@ -104,6 +104,44 @@ s.table(
 - Every row must have the same number of cells as `headers` — a mismatch raises `ValueError` at construction time, not at render time.
 - Cells accept inline formatting like any other text: `[["EMEA", bold("$1.2M")]]`.
 - In Markdown, pipes in cell text are escaped and newlines inside a cell become `<br>` so the table stays valid.
+
+### Tables from data
+
+Three helpers build a table straight from data, so you don't have to turn values into strings yourself:
+
+```python
+# A list of dicts: keys become headers (union of keys, first-seen order)
+s.table_from_records([
+    {"region": "EMEA", "revenue": 1_234_567.9, "growth": 0.08},
+    {"region": "APAC", "revenue": 987_654.3, "growth": None},
+])
+
+# A CSV file path or open text file; the first row is the header
+s.table_from_csv("sales.csv", delimiter=",", encoding="utf-8")
+
+# A pandas DataFrame (pandas is optional — reportsmith never imports it)
+s.table_from_dataframe(df, index=False)
+```
+
+All three accept the same options:
+
+| Option | Effect |
+| --- | --- |
+| `columns=["growth", "region"]` | Select and order columns (second positional argument). Unknown names raise `ValueError`. |
+| `headers={"revenue": "Revenue ($)"}` | Relabel columns: a mapping for some columns, or a list with one label per column. Labels may use inline formatting. |
+| `formats="{:,.2f}"` | One format string or callable, applied to every **numeric** cell. |
+| `formats={"revenue": "${:,.0f}", "growth": "{:+.1%}"}` | Per-column formats, applied to every value in that column; callables may return inline content, e.g. `{"region": bold}`. |
+| `missing="—"` | Text for `None`, NaN, and pandas `NA`/`NaT` (default: empty cell). |
+| `align=None` | Default: numeric columns are right-aligned, others left. Pass a list to override. |
+| `caption="..."` | Caption, as for `table()`. |
+
+Values without a format are rendered with `str()`. Booleans count as text, not numbers.
+
+**CSV specifics:** with `parse_numbers=True` (the default), a column whose values all look like numbers is converted to `int`/`float`, so formats and right-alignment apply. Conversion is per column, all or nothing: integers with leading zeros (IDs, ZIP codes like `00501`) and values with thousands separators stay text, and so does the rest of their column. Blank lines are skipped, short rows are padded with missing cells, a leading byte-order mark is dropped, and a row with too many fields raises `ValueError`. Pass `parse_numbers=False` to keep every value as text.
+
+**DataFrame specifics:** `index=True` adds the index as the first column, headed by the index name. Any object with `columns` and `itertuples()` works.
+
+The same constructors are available as `Table.from_records(...)`, `Table.from_csv(...)` and `Table.from_dataframe(...)` when you want a `Table` to pass to `add()`.
 
 ## Lists
 

@@ -131,6 +131,14 @@ Container (builder API)
 
       Add a :class:`Table`.
 
+   .. py:method:: table_from_records(records, columns=None, **options) -> Container
+   .. py:method:: table_from_csv(source, columns=None, **options) -> Container
+   .. py:method:: table_from_dataframe(df, columns=None, **options) -> Container
+
+      Add a :class:`Table` built with :meth:`Table.from_records`,
+      :meth:`Table.from_csv` or :meth:`Table.from_dataframe`; ``options``
+      are passed through.
+
    .. py:method:: image(src, alt="", title="") -> Container
 
       Add an :class:`Image`.
@@ -200,6 +208,50 @@ render-agnostic.
       an invalid ``align`` value.
 
    Markdown cells escape ``|`` and turn embedded newlines into ``<br>``.
+
+   The constructors below share these keyword options:
+
+   :param columns: Column keys to include, in order (second positional
+      argument); default all.
+   :param headers: Display labels — a sequence with one ``TextLike`` per
+      selected column, or a mapping from column key to label.
+   :param formats: A format string (``"{:,.2f}"``) or callable applied to
+      every numeric cell, or a mapping from column key to format applied to
+      every non-missing value in that column. Callables may return any
+      ``TextLike``.
+   :param align: As above; ``None`` right-aligns columns whose non-missing
+      values are all numbers (``bool`` excluded) and left-aligns the rest.
+   :param str missing: Cell text for ``None``, NaN, and pandas ``NA`` /
+      ``NaT``; default ``""``.
+   :param str caption: As above.
+   :raises ValueError: for column names in ``columns``, ``headers`` or
+      ``formats`` that don't exist, or a ``headers`` sequence of the wrong
+      length.
+
+   .. py:classmethod:: from_records(records, columns=None, *, headers=None, formats=None, align=None, missing="", caption="") -> Table
+
+      Rows from an iterable of mappings. Columns default to the union of
+      keys in first-seen order; keys absent from a record are missing.
+
+      :raises TypeError: if a record is not a mapping.
+
+   .. py:classmethod:: from_csv(source, columns=None, *, delimiter=",", encoding="utf-8", parse_numbers=True, headers=None, formats=None, align=None, missing="", caption="") -> Table
+
+      Rows from a CSV file path or open text file; the first row is the
+      header. With ``parse_numbers``, a column whose values all parse as
+      numbers becomes ``int``/``float`` (integers with leading zeros and
+      thousands separators stay text). Empty fields are missing, short rows
+      are padded, blank lines are skipped and a leading BOM is dropped.
+
+      :raises ValueError: for empty input or a row with too many fields.
+
+   .. py:classmethod:: from_dataframe(df, columns=None, *, index=False, headers=None, formats=None, align=None, missing="", caption="") -> Table
+
+      Rows from a pandas DataFrame (or any object with ``columns`` and
+      ``itertuples()``); pandas is not imported. ``index=True`` prepends the
+      index as a column headed by the index name.
+
+      :raises TypeError: if *df* is not DataFrame-like.
 
 .. py:class:: Image(src, alt="", title="")
 

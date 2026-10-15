@@ -37,7 +37,7 @@ from .renderers.html import HtmlRenderer
 from .renderers.pdf import PdfRenderer
 from .renderers.latex import LatexRenderer
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "Report",

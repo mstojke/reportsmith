@@ -6,6 +6,7 @@ A small, dependency-free Python library for building reports programmatically an
 
 - Fluent builder API with chainable methods and nested sections (`with report.section(...)`)
 - Table of contents in every format: linked lists in Markdown/HTML, `\tableofcontents` in LaTeX, clickable entries with page numbers in PDF
+- Tables straight from data: lists of dicts, CSV files, or pandas DataFrames, with number formatting, missing-value placeholders, and automatic right-alignment of numeric columns
 - Elements: headings, paragraphs, tables (with alignment and captions), bullet/numbered lists (nestable), code blocks, block quotes, images, horizontal rules, and format-specific raw passthrough
 - Inline formatting helpers: `bold()`, `italic()`, `code()`, `link()` — render correctly in both formats
 - Correct escaping everywhere: HTML entities, Markdown table pipes, code fences that widen when the source contains ` ``` `
@@ -88,6 +89,7 @@ Builder methods (all chainable, also available on sections):
 | `code(source, language="")` | Fenced/`<pre>` code block |
 | `bullet_list(items)` / `numbered_list(items)` | List; items may be text or a nested `ListElement` |
 | `table(headers, rows, caption="", align=None)` | Table; `align` entries are `"left"`, `"center"`, `"right"` |
+| `table_from_records(records)` / `table_from_csv(source)` / `table_from_dataframe(df)` | Table built from data; options `columns`, `headers`, `formats`, `missing`, `align`, `caption` |
 | `image(src, alt="", title="")` | Image |
 | `horizontal_rule()` | Rule |
 | `raw(content, format="both")` | Verbatim content for `"markdown"`, `"html"`, `"latex"`, or `"both"` (Markdown + HTML) |
@@ -106,7 +108,7 @@ Anywhere text is accepted you may pass a plain string or a list mixing strings w
 
 ## Running tests
 
-The test suite (186 tests) lives in `tests/`:
+The test suite (256 tests) lives in `tests/`:
 
 ```bash
 python -m pytest
