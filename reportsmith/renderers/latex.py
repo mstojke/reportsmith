@@ -16,6 +16,7 @@ from ..elements import (
     Raw,
     Section,
     Table,
+    TableOfContents,
 )
 from ..inline import Inline, InlineContent
 
@@ -171,6 +172,13 @@ class LatexRenderer:
             return "\\par\\noindent\\rule{\\linewidth}{0.4pt}\\par\n\n"
         if isinstance(el, Raw):
             return el.content + "\n\n" if el.format == "latex" else ""
+        if isinstance(el, TableOfContents):
+            # Grouped so the renamed heading stays local to this TOC. Our
+            # depth 1 (top-level sections) is LaTeX's tocdepth 1 (\section).
+            return (
+                f"{{\\renewcommand{{\\contentsname}}{{{escape_latex(el.title)}}}"
+                f"\\setcounter{{tocdepth}}{{{el.depth}}}\\tableofcontents}}\n\n"
+            )
         raise TypeError(f"Cannot render element of type {type(el).__name__}")
 
     def _code(self, el: CodeBlock) -> str:

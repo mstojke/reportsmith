@@ -12,12 +12,13 @@ This guide walks through every feature. For a terse signature-level listing, see
 4. [Tables](#tables)
 5. [Lists](#lists)
 6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules)
-7. [Raw passthrough content](#raw-passthrough-content)
-8. [Exporting](#exporting)
-9. [Exporting to LaTeX](#exporting-to-latex)
-10. [Exporting to PDF](#exporting-to-pdf)
-11. [Customizing the HTML output](#customizing-the-html-output)
-12. [Escaping and safety](#escaping-and-safety)
+7. [Table of contents](#table-of-contents)
+8. [Raw passthrough content](#raw-passthrough-content)
+9. [Exporting](#exporting)
+10. [Exporting to LaTeX](#exporting-to-latex)
+11. [Exporting to PDF](#exporting-to-pdf)
+12. [Customizing the HTML output](#customizing-the-html-output)
+13. [Escaping and safety](#escaping-and-safety)
 
 ---
 
@@ -136,6 +137,32 @@ s.horizontal_rule()
 
 - `language` becomes the fence info string in Markdown and a `language-*` class in HTML (ready for highlight.js/Prism if you add one via custom CSS/raw HTML).
 - If the code itself contains ` ``` `, the Markdown fence automatically widens so the block stays intact.
+
+## Table of contents
+
+`toc(title="Contents", depth=3)` adds a table of contents listing every section and explicit heading in the report, in document order. It always covers the whole report, so it can go anywhere — usually right after creating the report:
+
+```python
+report = Report("Q3 Sales Report")
+report.toc()                       # or report.toc(title="In this report", depth=1)
+
+with report.section("Overview") as s:        # depth 1
+    with s.section("By region") as r:        # depth 2
+        r.section("EMEA")                    # depth 3
+```
+
+`depth` (1–5) controls how many levels are listed: `1` lists only top-level sections, `2` adds their subsections, and so on. Pass `title=""` to omit the title line.
+
+How each format renders it:
+
+| Format | Output |
+| --- | --- |
+| Markdown | A bold title and a nested bullet list of links to GitHub-style heading anchors (`#overview`, repeated titles get `-1`, `-2`, …) |
+| HTML | A `<nav class="toc">` with nested links; headings get matching `id` attributes (only when the report has a TOC). Styled by the default stylesheet. |
+| LaTeX | `\tableofcontents` with `tocdepth` set to `depth`. Compile twice so LaTeX can fill it in. |
+| PDF | Clickable entries with right-aligned page numbers; long titles are truncated with an ellipsis. |
+
+Entries use the plain text of each title in Markdown and PDF; HTML keeps inline formatting such as bold. In PDF only the first TOC in a report is rendered (an fpdf2 limitation), and content after it starts on a new page.
 
 ## Raw passthrough content
 

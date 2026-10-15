@@ -16,8 +16,10 @@ from ..elements import (
     Raw,
     Section,
     Table,
+    TableOfContents,
 )
 from ..inline import Inline, InlineContent
+from ..toc import TocEntry, build_tree, collect_entries, heading_anchors, plain_text
 
 if TYPE_CHECKING:
     from ..report import Report
@@ -29,6 +31,8 @@ class MarkdownRenderer:
     """Renders a Report to GitHub-flavored Markdown."""
 
     def render(self, report: "Report") -> str:
+        self._report = report
+        self._anchors = heading_anchors(report)
         blocks: list[str] = [f"# {report.title}"]
         meta = self._metadata_lines(report)
         if meta:
@@ -79,7 +83,26 @@ class MarkdownRenderer:
             return ["---"]
         if isinstance(el, Raw):
             return [el.content] if el.format in ("markdown", "both") else []
+        if isinstance(el, TableOfContents):
+            return self._toc(el)
         raise TypeError(f"Cannot render element of type {type(el).__name__}")
+
+    def _toc(self, el: TableOfContents) -> list[str]:
+        blocks = [f"**{el.title}**"] if el.title else []
+        lines: list[str] = []
+
+        def walk(entries: list[TocEntry], indent: int) -> None:
+            for entry in entries:
+                # Plain text: inline markup can't nest inside link text.
+                text = plain_text(entry.parts).replace("[", r"\[").replace("]", r"\]")
+                anchor = self._anchors[id(entry.element)]
+                lines.append(f"{'  ' * indent}- [{text}](#{anchor})")
+                walk(entry.children, indent + 1)
+
+        walk(build_tree(collect_entries(self._report, el.depth)), 0)
+        if lines:
+            blocks.append("\n".join(lines))
+        return blocks
 
     def _list_lines(self, el: ListElement, indent: int) -> list[str]:
         lines: list[str] = []

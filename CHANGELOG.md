@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Table of contents (`toc(title="Contents", depth=3)`, `TableOfContents`)
+  in all four formats. It lists every section and explicit heading up to
+  `depth` levels. Markdown gets a nested list of links to GitHub-style
+  heading anchors; HTML gets a styled `<nav class="toc">` with matching
+  heading `id`s; LaTeX gets `\tableofcontents` with `tocdepth`; PDF gets
+  clickable entries with page numbers, spanning as many pages as needed.
+
 ## [0.2.0] - 2026-08-26
 
 ### Added

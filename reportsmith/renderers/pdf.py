@@ -29,8 +29,10 @@ from ..elements import (
     Raw,
     Section,
     Table,
+    TableOfContents,
 )
 from ..inline import Inline, InlineContent
+from ..toc import collect_entries, find_tocs, plain_text
 
 if TYPE_CHECKING:
     from ..report import Report
@@ -38,6 +40,10 @@ if TYPE_CHECKING:
 PAGE_MARGIN = 18  # mm
 BODY_SIZE = 11
 _HEADING_SIZES = {1: 20, 2: 16, 3: 13.5, 4: 12, 5: 11, 6: 10.5}
+_TOC_TITLE_H = 10  # mm
+_TOC_ROW_H = 7
+_TOC_INDENT = 6
+_TOC_PAGE_W = 12  # width of the page-number column
 
 _TEXT = (31, 41, 55)
 _MUTED = (107, 114, 128)
@@ -105,6 +111,11 @@ class PdfRenderer:
         pdf.set_margins(PAGE_MARGIN, PAGE_MARGIN)
         pdf.set_auto_page_break(True, margin=PAGE_MARGIN)
         self._setup_fonts(pdf)
+        # fpdf2 supports one TOC per document, so only the first is rendered.
+        self._toc = next(find_tocs(report), None)
+        self._toc_entries = collect_entries(report, self._toc.depth) if self._toc else []
+        self._toc_ids = {id(entry.element) for entry in self._toc_entries}
+        self._toc_targets: dict[int, tuple[int, int]] = {}  # id -> (link, page)
         pdf.add_page()
         pdf.set_title(report.title)
         if report.author:
@@ -162,11 +173,13 @@ class PdfRenderer:
             self._keep_with_next(pdf)
             # PDF outline (bookmarks): top-level sections at outline level 0.
             pdf.start_section(self._t(self._plain(el.title_parts)), level=el._level - 2)
+            self._mark_toc_target(pdf, el)
             self._heading(pdf, el.title_parts, el._level)
             for child in el.children:
                 self._element(pdf, child)
         elif isinstance(el, Heading):
             self._keep_with_next(pdf)
+            self._mark_toc_target(pdf, el)
             self._heading(pdf, el.parts, el.level)
         elif isinstance(el, Paragraph):
             self._write_parts(pdf, el.parts, BODY_SIZE)
@@ -196,8 +209,76 @@ class PdfRenderer:
             pdf.ln(4)
         elif isinstance(el, Raw):
             pass  # format-specific passthrough has no meaning in PDF
+        elif isinstance(el, TableOfContents):
+            if el is self._toc:
+                # The TOC is drawn after the rest of the document, once page
+                # numbers are known, into pages reserved here.
+                self._toc_start = pdf.page_no()
+                self._toc_pages = self._toc_page_count(pdf)
+                pdf.insert_toc_placeholder(self._render_toc, pages=self._toc_pages)
         else:
             raise TypeError(f"Cannot render element of type {type(el).__name__}")
+
+    # -- table of contents -----------------------------------------------
+
+    def _mark_toc_target(self, pdf, el: Element) -> None:
+        if id(el) in self._toc_ids:
+            link = pdf.add_link()
+            pdf.set_link(link, y=pdf.get_y(), page=pdf.page_no())
+            self._toc_targets[id(el)] = (link, pdf.page_no())
+
+    def _toc_page_count(self, pdf) -> int:
+        # Must mirror the pagination in _render_toc exactly: fpdf2 raises if
+        # the TOC ends on any page other than the last one reserved.
+        y, pages = pdf.get_y(), 1
+
+        def advance(h: float) -> None:
+            nonlocal y, pages
+            if y + h > pdf.page_break_trigger:
+                pages += 1
+                y = pdf.t_margin
+            y += h
+
+        if self._toc.title:
+            advance(_TOC_TITLE_H)
+            y += 2
+        for _ in self._toc_entries:
+            advance(_TOC_ROW_H)
+        return pages
+
+    def _render_toc(self, pdf, outline) -> None:
+        def make_room(h: float) -> None:
+            if pdf.get_y() + h > pdf.page_break_trigger:
+                pdf.add_page()
+
+        pdf.set_text_color(*_TEXT)
+        if self._toc.title:
+            make_room(_TOC_TITLE_H)
+            pdf.set_font(self.body_family, "B", _HEADING_SIZES[2])
+            pdf.cell(0, _TOC_TITLE_H, self._t(self._toc.title), new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(2)
+        for entry in self._toc_entries:
+            make_room(_TOC_ROW_H)
+            link, page = self._toc_targets.get(id(entry.element), ("", 0))
+            indent = _TOC_INDENT * (entry.depth - 1)
+            name_w = pdf.epw - indent - _TOC_PAGE_W
+            pdf.set_font(self.body_family, "B" if entry.depth == 1 else "", BODY_SIZE)
+            name = self._fit(pdf, self._t(plain_text(entry.parts)), name_w - 2)
+            pdf.set_x(pdf.l_margin + indent)
+            pdf.cell(name_w, _TOC_ROW_H, name, link=link)
+            pdf.cell(_TOC_PAGE_W, _TOC_ROW_H, str(page or ""), align="R", link=link,
+                     new_x="LMARGIN", new_y="NEXT")
+        while pdf.page_no() < self._toc_start + self._toc_pages - 1:
+            pdf.add_page()
+
+    def _fit(self, pdf, text: str, width: float) -> str:
+        """Truncate ``text`` with an ellipsis so it fits on one line."""
+        if pdf.get_string_width(text) <= width:
+            return text
+        ellipsis = "…" if self.unicode else "..."
+        while text and pdf.get_string_width(text + ellipsis) > width:
+            text = text[:-1]
+        return text.rstrip() + ellipsis
 
     def _keep_with_next(self, pdf) -> None:
         # Avoid a heading orphaned at the bottom of a page.

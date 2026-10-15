@@ -17,8 +17,10 @@ from ..elements import (
     Raw,
     Section,
     Table,
+    TableOfContents,
 )
 from ..inline import Inline, InlineContent
+from ..toc import TocEntry, build_tree, collect_entries, find_tocs, heading_anchors
 
 if TYPE_CHECKING:
     from ..report import Report
@@ -68,6 +70,12 @@ pre code { background: none; padding: 0; }
 blockquote { border-left: 4px solid var(--border); color: var(--muted); margin: 1em 0; padding: 0.1em 1em; }
 img { max-width: 100%; }
 hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+nav.toc { border: 1px solid var(--border); border-radius: 8px; padding: 0.8em 1.2em; margin: 1.5em 0; }
+nav.toc .toc-title { font-weight: 600; margin-bottom: 0.3em; }
+nav.toc ul { list-style: none; margin: 0; padding-left: 1.2em; }
+nav.toc > ul { padding-left: 0; }
+nav.toc a { text-decoration: none; }
+nav.toc a:hover { text-decoration: underline; }
 """
 
 
@@ -99,6 +107,10 @@ class HtmlRenderer:
         )
 
     def _body(self, report: "Report") -> str:
+        self._report = report
+        # Headings only get ids when there is a TOC to link to them, so
+        # output for reports without one is unchanged.
+        self._anchors = heading_anchors(report) if any(find_tocs(report)) else {}
         parts = [f"<h1>{escape(report.title)}</h1>\n"]
         meta = []
         if report.subtitle:
@@ -118,11 +130,11 @@ class HtmlRenderer:
     def _render_element(self, el: Element) -> str:
         if isinstance(el, Section):
             level = el._level
-            out = [f"<h{level}>{self._inline(el.title_parts)}</h{level}>\n"]
+            out = [f"<h{level}{self._id(el)}>{self._inline(el.title_parts)}</h{level}>\n"]
             out.extend(self._render_element(child) for child in el.children)
             return "".join(out)
         if isinstance(el, Heading):
-            return f"<h{el.level}>{self._inline(el.parts)}</h{el.level}>\n"
+            return f"<h{el.level}{self._id(el)}>{self._inline(el.parts)}</h{el.level}>\n"
         if isinstance(el, Paragraph):
             return f"<p>{self._inline(el.parts)}</p>\n"
         if isinstance(el, Quote):
@@ -144,7 +156,41 @@ class HtmlRenderer:
             return "<hr>\n"
         if isinstance(el, Raw):
             return el.content + "\n" if el.format in ("html", "both") else ""
+        if isinstance(el, TableOfContents):
+            return self._toc(el)
         raise TypeError(f"Cannot render element of type {type(el).__name__}")
+
+    def _id(self, el: Element) -> str:
+        anchor = self._anchors.get(id(el))
+        return f' id="{escape(anchor, quote=True)}"' if anchor else ""
+
+    def _toc(self, el: TableOfContents) -> str:
+        label = escape(el.title or "Contents", quote=True)
+        out = [f'<nav class="toc" aria-label="{label}">\n']
+        if el.title:
+            out.append(f'<div class="toc-title">{escape(el.title)}</div>\n')
+
+        def walk(entries: list[TocEntry]) -> None:
+            out.append("<ul>\n")
+            for entry in entries:
+                anchor = escape(self._anchors[id(entry.element)], quote=True)
+                # Links can't nest inside the entry's own <a>; keep their text.
+                parts = [
+                    p.text if isinstance(p, Inline) and p.style == "link" else p
+                    for p in entry.parts
+                ]
+                out.append(f'<li><a href="#{anchor}">{self._inline(parts)}</a>')
+                if entry.children:
+                    out.append("\n")
+                    walk(entry.children)
+                out.append("</li>\n")
+            out.append("</ul>\n")
+
+        entries = build_tree(collect_entries(self._report, el.depth))
+        if entries:
+            walk(entries)
+        out.append("</nav>\n")
+        return "".join(out)
 
     def _list(self, el: ListElement) -> str:
         tag = "ol" if el.ordered else "ul"

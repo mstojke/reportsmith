@@ -108,6 +108,21 @@ class Raw(Element):
         self.format = format
 
 
+class TableOfContents(Element):
+    """A table of contents listing the report's sections and headings.
+
+    Always covers the whole report, wherever it is placed. ``depth`` limits
+    how many heading levels are listed: 1 lists only top-level sections, 2
+    adds their subsections, and so on (up to 5).
+    """
+
+    def __init__(self, title: str = "Contents", depth: int = 3):
+        if not 1 <= depth <= 5:
+            raise ValueError(f"TOC depth must be 1-5, got {depth}")
+        self.title = title
+        self.depth = depth
+
+
 class Container(Element):
     """Mixin providing the fluent builder API shared by Report and Section."""
 
@@ -171,6 +186,11 @@ class Container(Element):
 
     def raw(self, content: str, format: str = "both") -> "Container":
         self.children.append(Raw(content, format))
+        return self
+
+    def toc(self, title: str = "Contents", depth: int = 3) -> "Container":
+        """Add a table of contents for the whole report."""
+        self.children.append(TableOfContents(title, depth))
         return self
 
 

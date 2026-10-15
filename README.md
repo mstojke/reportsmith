@@ -5,6 +5,7 @@ A small, dependency-free Python library for building reports programmatically an
 ## Features
 
 - Fluent builder API with chainable methods and nested sections (`with report.section(...)`)
+- Table of contents in every format: linked lists in Markdown/HTML, `\tableofcontents` in LaTeX, clickable entries with page numbers in PDF
 - Elements: headings, paragraphs, tables (with alignment and captions), bullet/numbered lists (nestable), code blocks, block quotes, images, horizontal rules, and format-specific raw passthrough
 - Inline formatting helpers: `bold()`, `italic()`, `code()`, `link()` — render correctly in both formats
 - Correct escaping everywhere: HTML entities, Markdown table pipes, code fences that widen when the source contains ` ``` `
@@ -27,6 +28,7 @@ Or just copy the `reportsmith/` package into your project — it has no dependen
 from reportsmith import Report, bold, link
 
 report = Report("Q3 Sales Report", author="Jane Doe", subtitle="Quarterly summary")
+report.toc()                         # table of contents
 
 with report.section("Overview") as s:
     s.paragraph(["Revenue was ", bold("up 12%"), " quarter over quarter."])
@@ -89,6 +91,7 @@ Builder methods (all chainable, also available on sections):
 | `image(src, alt="", title="")` | Image |
 | `horizontal_rule()` | Rule |
 | `raw(content, format="both")` | Verbatim content for `"markdown"`, `"html"`, `"latex"`, or `"both"` (Markdown + HTML) |
+| `toc(title="Contents", depth=3)` | Table of contents for the whole report; `depth` 1–5 sets how many heading levels are listed |
 | `add(element)` | Any pre-built element |
 
 Anywhere text is accepted you may pass a plain string or a list mixing strings with `bold()`, `italic()`, `code()`, and `link(text, href)` spans.
@@ -103,7 +106,7 @@ Anywhere text is accepted you may pass a plain string or a list mixing strings w
 
 ## Running tests
 
-The test suite (151 tests) lives in `tests/`:
+The test suite (186 tests) lives in `tests/`:
 
 ```bash
 python -m pytest

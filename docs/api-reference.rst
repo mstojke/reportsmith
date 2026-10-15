@@ -12,7 +12,7 @@ Everything documented here is importable from the top-level package:
    from reportsmith import (
        Report, Section,
        Heading, Paragraph, Quote, CodeBlock, ListElement, Table, Image,
-       HorizontalRule, Raw,
+       HorizontalRule, Raw, TableOfContents,
        Inline, bold, italic, code, link,
        MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer,
    )
@@ -143,6 +143,10 @@ Container (builder API)
 
       Add a :class:`Raw` passthrough block.
 
+   .. py:method:: toc(title="Contents", depth=3) -> Container
+
+      Add a :class:`TableOfContents` for the whole report.
+
    .. py:method:: add(element) -> Container
 
       Append any pre-built :class:`Element`.
@@ -210,6 +214,22 @@ render-agnostic.
    :raises ValueError: for any other ``format`` value.
 
    .. warning:: Content is **not escaped** — pass trusted content only.
+
+.. py:class:: TableOfContents(title="Contents", depth=3)
+
+   Lists every :class:`Section` and :class:`Heading` in the report, in
+   document order, wherever the element is placed. ``depth`` limits the
+   levels listed (1 = top-level sections only); an empty ``title`` omits
+   the title line.
+
+   Markdown: bold title plus a nested list of links to GitHub-style heading
+   anchors. HTML: ``<nav class="toc">`` with nested links; headings gain
+   matching ``id`` attributes. LaTeX: ``\tableofcontents`` with
+   ``tocdepth`` set to ``depth`` (needs two compilation passes). PDF:
+   linked entries with page numbers; only the first TOC in a report is
+   rendered, and content after it starts on a new page.
+
+   :raises ValueError: unless ``1 <= depth <= 5``.
 
 Inline spans
 ============
@@ -316,6 +336,7 @@ Heading level outside 1–6                            ``ValueError`` (construct
 Table row width mismatch                             ``ValueError`` (construction)
 Invalid or mis-sized ``align``                       ``ValueError`` (construction)
 Invalid ``Raw`` format                               ``ValueError`` (construction)
+``TableOfContents`` depth outside 1–5                ``ValueError`` (construction)
 Renderer meets an unknown ``Element`` subclass       ``TypeError`` (render)
 PDF export without ``fpdf2`` installed               ``ImportError`` (render)
 ===================================================  ==============================

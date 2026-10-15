@@ -29,6 +29,7 @@ from .elements import (
     Raw,
     Section,
     Table,
+    TableOfContents,
 )
 from .report import Report
 from .renderers.markdown import MarkdownRenderer
@@ -44,6 +45,7 @@ __all__ = [
     "Heading",
     "Paragraph",
     "Table",
+    "TableOfContents",
     "ListElement",
     "CodeBlock",
     "Image",

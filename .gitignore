@@ -1,6 +1,7 @@
 __pycache__/
 docs/_build/
 dist/
+examples/output/
 reportsmith.egg-info/
 
 .coverage
