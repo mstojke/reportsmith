@@ -329,6 +329,8 @@ Details and limitations:
 - **Lists** nest at most four levels deep (a LaTeX limit). Empty lists are omitted.
 - **Multi-line table cells** are rendered as stacked lines within the cell.
 
+## Exporting to PDF
+
 PDF export is an optional extra built on [fpdf2](https://py-pdf.github.io/fpdf2/):
 
 ```bash

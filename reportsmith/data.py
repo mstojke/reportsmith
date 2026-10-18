@@ -143,7 +143,7 @@ def from_csv(
     **options: Any,
 ) -> "Table":
     if hasattr(source, "read"):
-        text = source.read()  # type: ignore[union-attr]
+        text = source.read()
     else:
         text = Path(source).read_text(encoding=encoding)
     # utf-8-sig behaviour for any encoding: drop a leading byte-order mark.

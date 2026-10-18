@@ -14,6 +14,8 @@ authors = [{ name = "Michal Stojke" }]
 keywords = ["report", "markdown", "html", "latex", "pdf", "export", "document"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Typing :: Typed",
     "Topic :: Text Processing :: Markup :: Markdown",
     "Topic :: Text Processing :: Markup :: HTML",
     "Topic :: Text Processing :: Markup :: LaTeX",
@@ -27,7 +29,7 @@ Issues = "https://github.com/mstojke/reportsmith/issues"
 
 [project.optional-dependencies]
 pdf = ["fpdf2"]
-dev = ["pytest", "pytest-cov", "fpdf2"]
+dev = ["pytest", "pytest-cov", "fpdf2", "pandas", "pypdf", "ruff", "mypy"]
 docs = ["sphinx", "myst-parser", "sphinx-rtd-theme"]
 
 [tool.setuptools.dynamic]
@@ -36,5 +38,26 @@ version = { attr = "reportsmith.__version__" }
 [tool.setuptools.packages.find]
 include = ["reportsmith*"]
 
+[tool.setuptools.package-data]
+reportsmith = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py39"
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle, and bugbear; long lines are allowed (tables of
+# font paths and test fixtures read better unwrapped).
+select = ["E", "F", "W", "B"]
+ignore = ["E501"]
+
+[tool.mypy]
+# mypy itself needs 3.10+; 3.9 compatibility is covered by the test matrix.
+python_version = "3.10"
+files = ["reportsmith"]
+# fpdf2 and pandas are optional and imported lazily.
+ignore_missing_imports = true
+warn_unused_ignores = true

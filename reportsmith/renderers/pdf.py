@@ -254,6 +254,7 @@ class PdfRenderer:
                 y = pdf.t_margin
             y += h
 
+        assert self._toc is not None  # only called while rendering a TOC
         if self._toc.title:
             advance(_TOC_TITLE_H)
             y += 2
@@ -266,6 +267,7 @@ class PdfRenderer:
             if pdf.get_y() + h > pdf.page_break_trigger:
                 pdf.add_page()
 
+        assert self._toc is not None
         pdf.set_text_color(*_TEXT)
         if self._toc.title:
             make_room(_TOC_TITLE_H)

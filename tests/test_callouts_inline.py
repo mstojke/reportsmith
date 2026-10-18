@@ -4,6 +4,11 @@ import io
 
 import pytest
 
+try:
+    import fpdf
+except ImportError:
+    fpdf = None
+
 from reportsmith import (
     Callout,
     Inline,
@@ -251,9 +256,8 @@ class TestCalloutLatex:
             assert f"\\definecolor{{rs{kind}}}" in out
 
 
+@pytest.mark.skipif(fpdf is None, reason="fpdf2 not installed")
 class TestPdf:
-    fpdf = pytest.importorskip("fpdf")
-
     def full(self) -> Report:
         r = report()
         with r.section(["Water", footnote("Heading note.")]) as s:

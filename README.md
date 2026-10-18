@@ -1,5 +1,7 @@
 # reportsmith
 
+[![Tests](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml/badge.svg)](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml)
+
 A small, dependency-free Python library for building reports programmatically and exporting them to **Markdown**, a **standalone styled HTML** document, **LaTeX**, or (optionally) **PDF**.
 
 ## Features
@@ -110,17 +112,35 @@ Anywhere text is accepted you may pass a plain string or a list mixing strings w
 
 ## Running tests
 
-The test suite (298 tests) lives in `tests/`:
+Install the development dependencies (pytest, coverage, the optional fpdf2 and pandas integrations, pypdf for checking PDF output, ruff and mypy):
+
+```bash
+pip install -e .[dev]
+```
+
+The test suite lives in `tests/`. Tests for optional integrations are skipped when their package isn't installed.
 
 ```bash
 python -m pytest
 ```
 
-With a coverage report (requires `pytest-cov`):
+With a coverage report:
 
 ```bash
 python -m pytest --cov=reportsmith --cov-report=term-missing
 ```
+
+Lint and type-check:
+
+```bash
+ruff check .
+```
+
+```bash
+mypy
+```
+
+CI runs all of these on Python 3.9–3.13, runs the suite once more with no optional dependencies installed, and compiles the LaTeX output of every example with pdfLaTeX, XeLaTeX, and LuaLaTeX.
 
 ## Changelog
 
