@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- CI now also tests on Python 3.14.
+- Coverage badge in the README. On each push to `main`, CI measures
+  coverage and commits a shields.io endpoint file to a separate `badges`
+  branch, so no third-party coverage service or secret is needed.
+
+### Changed
+
+- GitHub Actions updated to their Node.js 24 releases, ending the Node.js
+  20 deprecation warnings: `actions/checkout` v7, `actions/setup-python`
+  v7, `actions/upload-artifact` v7 and `actions/download-artifact` v8
+  (which now fails a release build on an artifact checksum mismatch
+  instead of warning).
+- The Python version test matrix runs on `ubuntu-24.04` instead of
+  `ubuntu-latest`, because there is no Python 3.9 build for Ubuntu 26.04.
+
 ## [0.4.0] - 2026-10-18
 
 ### Added

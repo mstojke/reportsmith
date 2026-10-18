@@ -1,6 +1,7 @@
 # reportsmith
 
 [![Tests](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml/badge.svg)](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/mstojke/reportsmith/badges/coverage.json)](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml)
 
 A small, dependency-free Python library for building reports programmatically and exporting them to **Markdown**, a **standalone styled HTML** document, **LaTeX**, or (optionally) **PDF**.
 
@@ -140,7 +141,7 @@ ruff check .
 mypy
 ```
 
-CI runs all of these on Python 3.9–3.13, runs the suite once more with no optional dependencies installed, and compiles the LaTeX output of every example with pdfLaTeX, XeLaTeX, and LuaLaTeX.
+CI runs all of these on Python 3.9–3.14, runs the suite once more with no optional dependencies installed, and compiles the LaTeX output of every example with pdfLaTeX, XeLaTeX, and LuaLaTeX.
 
 ## Changelog
 
