@@ -1,6 +1,7 @@
 # reportsmith
 
 [![Tests](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml/badge.svg)](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/mstojke/reportsmith/badges/coverage.json)](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml)
 
 A small, dependency-free Python library for building reports programmatically and exporting them to **Markdown**, a **standalone styled HTML** document, **LaTeX**, or (optionally) **PDF**.
 

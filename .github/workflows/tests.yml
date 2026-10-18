@@ -38,6 +38,57 @@ jobs:
       - name: Run tests
         run: python -m pytest --cov=reportsmith --cov-report=term-missing
 
+  coverage-badge:
+    # Publishes the coverage badge shown in the README: on pushes to main,
+    # measure coverage and commit a shields.io endpoint JSON to the
+    # "badges" branch. No third-party service or secret needed.
+    name: Coverage badge
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install with all optional dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Measure coverage
+        run: |
+          python -m pytest --cov=reportsmith --cov-report=json:coverage.json -q
+          python .github/scripts/coverage_badge.py coverage.json "$RUNNER_TEMP/coverage-badge.json"
+
+      - name: Commit badge to the badges branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin badges > /dev/null; then
+            # Explicit refspec: actions/checkout makes a single-branch clone,
+            # where a plain "fetch origin badges" only updates FETCH_HEAD.
+            git fetch --depth=1 origin +refs/heads/badges:refs/remotes/origin/badges
+            git worktree add -B badges "$RUNNER_TEMP/badges" origin/badges
+          else
+            # First run: create the branch with no history from main.
+            git worktree add --detach "$RUNNER_TEMP/badges"
+            git -C "$RUNNER_TEMP/badges" checkout --orphan badges
+            git -C "$RUNNER_TEMP/badges" rm -rf --quiet .
+          fi
+          cd "$RUNNER_TEMP/badges"
+          cp "$RUNNER_TEMP/coverage-badge.json" coverage.json
+          git add coverage.json
+          if git diff --cached --quiet; then
+            echo "Coverage unchanged; nothing to commit."
+            exit 0
+          fi
+          git commit -m "Update coverage badge"
+          git push origin badges
+
   test-minimal:
     # reportsmith has no required dependencies: the core must import and the
     # suite must pass (skipping PDF/pandas tests) with nothing optional installed.

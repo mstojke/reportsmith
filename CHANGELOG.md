@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - CI now also tests on Python 3.14.
+- Coverage badge in the README. On each push to `main`, CI measures
+  coverage and commits a shields.io endpoint file to a separate `badges`
+  branch, so no third-party coverage service or secret is needed.
 
 ### Changed
 
