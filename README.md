@@ -140,7 +140,7 @@ ruff check .
 mypy
 ```
 
-CI runs all of these on Python 3.9–3.13, runs the suite once more with no optional dependencies installed, and compiles the LaTeX output of every example with pdfLaTeX, XeLaTeX, and LuaLaTeX.
+CI runs all of these on Python 3.9–3.14, runs the suite once more with no optional dependencies installed, and compiles the LaTeX output of every example with pdfLaTeX, XeLaTeX, and LuaLaTeX.
 
 ## Changelog
 
