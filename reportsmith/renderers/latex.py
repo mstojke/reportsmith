@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..elements import (
+    Callout,
     CodeBlock,
     Element,
     Heading,
@@ -39,6 +40,18 @@ DEFAULT_PREAMBLE = r"""\usepackage{iftex}
 \usepackage{longtable}
 \usepackage{fancyvrb}
 \usepackage{xcolor}
+\usepackage[normalem]{ulem}
+\usepackage{tcolorbox}
+\tcbuselibrary{breakable}
+\definecolor{rsnote}{HTML}{1D4ED8}
+\definecolor{rstip}{HTML}{15803D}
+\definecolor{rsimportant}{HTML}{7C3AED}
+\definecolor{rswarning}{HTML}{B45309}
+\definecolor{rscaution}{HTML}{B91C1C}
+% Callout box: #1 = colour, #2 = title.
+\newtcolorbox{rscallout}[2]{breakable, sharp corners, boxrule=0pt, leftrule=3pt,
+  colframe=#1, colback=#1!6!white, colbacktitle=#1!6!white, coltitle=#1,
+  fonttitle=\bfseries, title={#2}}
 \usepackage{hyperref}
 \hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
 % Scale images down to the line width, but never up.
@@ -150,12 +163,11 @@ class LatexRenderer:
 
     def _render_element(self, el: Element) -> str:
         if isinstance(el, Section):
-            cmd = _SECTION_COMMANDS[el._level]
-            out = [f"\\{cmd}{{{self._inline(el.title_parts)}}}\n\n"]
+            out = [self._heading(_SECTION_COMMANDS[el._level], el.title_parts)]
             out.extend(self._render_element(child) for child in el.children)
             return "".join(out)
         if isinstance(el, Heading):
-            return f"\\{_SECTION_COMMANDS[el.level]}{{{self._inline(el.parts)}}}\n\n"
+            return self._heading(_SECTION_COMMANDS[el.level], el.parts)
         if isinstance(el, Paragraph):
             return f"{self._inline(el.parts)}\n\n"
         if isinstance(el, Quote):
@@ -179,7 +191,25 @@ class LatexRenderer:
                 f"{{\\renewcommand{{\\contentsname}}{{{escape_latex(el.title)}}}"
                 f"\\setcounter{{tocdepth}}{{{el.depth}}}\\tableofcontents}}\n\n"
             )
+        if isinstance(el, Callout):
+            body = "".join(self._render_element(child) for child in el.children)
+            return (
+                f"\\begin{{rscallout}}{{rs{el.kind}}}{{{escape_latex(el.display_title)}}}\n"
+                f"{body.rstrip(chr(10))}\n"
+                "\\end{rscallout}\n\n"
+            )
         raise TypeError(f"Cannot render element of type {type(el).__name__}")
+
+    def _heading(self, cmd: str, parts: list[InlineContent]) -> str:
+        title = self._inline(parts)
+        if not any(isinstance(p, Inline) and p.style == "footnote" for p in parts):
+            return f"\\{cmd}{{{title}}}\n\n"
+        # A footnote can't go into the TOC or PDF bookmarks, so give the
+        # heading a short title without it.
+        short = self._inline(
+            [p for p in parts if not (isinstance(p, Inline) and p.style == "footnote")]
+        )
+        return f"\\{cmd}[{{{short}}}]{{{title}}}\n\n"
 
     def _code(self, el: CodeBlock) -> str:
         # With commandchars, only \ { } need escaping, and an escaped
@@ -277,4 +307,12 @@ class LatexRenderer:
             return f"\\texttt{{{text}}}"
         if span.style == "link":
             return f"\\href{{{_escape_url(span.href)}}}{{{text}}}"
+        if span.style == "strike":
+            return f"\\sout{{{text}}}"
+        if span.style == "sub":
+            return f"\\textsubscript{{{text}}}"
+        if span.style == "sup":
+            return f"\\textsuperscript{{{text}}}"
+        if span.style == "footnote":
+            return f"\\footnote{{{text}}}"
         return text

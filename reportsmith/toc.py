@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Iterator, Union
 
-from .elements import Container, Element, Heading, Section, TableOfContents
+from .elements import Container, Heading, Section, TableOfContents
 from .inline import Inline, InlineContent
 
 if TYPE_CHECKING:
@@ -26,7 +26,13 @@ class TocEntry:
 
 
 def plain_text(parts: list[InlineContent]) -> str:
-    return "".join(p.text if isinstance(p, Inline) else str(p) for p in parts)
+    """Text of inline content; footnotes are dropped, since a footnote's
+    text is the note rather than part of the sentence."""
+    return "".join(
+        p.text if isinstance(p, Inline) else str(p)
+        for p in parts
+        if not (isinstance(p, Inline) and p.style == "footnote")
+    )
 
 
 def iter_headings(container: Container) -> Iterator[Union[Section, Heading]]:
@@ -47,7 +53,7 @@ def find_tocs(container: Container) -> Iterator[TableOfContents]:
             yield from find_tocs(child)
 
 
-def heading_depth(el: Element) -> int:
+def heading_depth(el: Union[Section, Heading]) -> int:
     # The report title is level 1, so top-level sections (level 2) are
     # depth 1; an explicit level-1 heading is treated as top-level too.
     level = el._level if isinstance(el, Section) else el.level

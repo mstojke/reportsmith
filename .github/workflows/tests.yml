@@ -1,0 +1,122 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install with all optional dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run tests
+        run: python -m pytest --cov=reportsmith --cov-report=term-missing
+
+  test-minimal:
+    # reportsmith has no required dependencies: the core must import and the
+    # suite must pass (skipping PDF/pandas tests) with nothing optional installed.
+    name: pytest (no optional dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install core package and pytest only
+        run: python -m pip install -e . pytest
+
+      - name: Run tests
+        run: python -m pytest -rs
+
+  lint:
+    name: ruff and mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install linters
+        run: python -m pip install -e . ruff mypy
+
+      - name: ruff
+        run: ruff check .
+
+      - name: mypy
+        run: mypy
+
+  latex:
+    # Compile the LaTeX export of every example, so the preamble and the
+    # generated markup are checked against a real TeX installation.
+    name: LaTeX (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [pdflatex, xelatex, lualatex]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install TeX Live
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-base texlive-latex-recommended texlive-latex-extra \
+            texlive-plain-generic texlive-fonts-recommended lmodern \
+            texlive-xetex texlive-luatex
+
+      - name: Generate LaTeX from the examples
+        run: |
+          python -m pip install -e ".[pdf]" pandas
+          python example.py
+          python examples/toc_example.py
+          python examples/data_tables_example.py
+          python examples/callouts_example.py
+
+      - name: Compile with ${{ matrix.engine }}
+        run: |
+          for tex in example_report.tex examples/output/*.tex; do
+            echo "::group::${{ matrix.engine }} $tex"
+            dir=$(dirname "$tex"); name=$(basename "$tex" .tex)
+            # Two passes, so the table of contents and longtables settle.
+            for pass in 1 2; do
+              if ! (cd "$dir" && ${{ matrix.engine }} -interaction=nonstopmode -halt-on-error "$name.tex" > /dev/null); then
+                echo "::error file=$tex::${{ matrix.engine }} failed on pass $pass"
+                tail -n 60 "$dir/$name.log"
+                exit 1
+              fi
+            done
+            echo "::endgroup::"
+          done

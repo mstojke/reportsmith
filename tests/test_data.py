@@ -8,6 +8,13 @@ import pytest
 from reportsmith import Report, Table, bold
 from reportsmith.data import is_missing, parse_number
 
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
+
+requires_pandas = pytest.mark.skipif(pd is None, reason="pandas not installed")
+
 SALES = [
     {"region": "EMEA", "revenue": 1234567.891, "growth": 0.08},
     {"region": "APAC", "revenue": 987654.3, "growth": None},
@@ -219,13 +226,12 @@ class TestCsv:
         assert headers(t) == ["a", "b"] and t.rows == []
 
 
+@requires_pandas
 class TestDataFrame:
-    pd = pytest.importorskip("pandas")
-
     def frame(self):
-        return self.pd.DataFrame(
+        return pd.DataFrame(
             {"region": ["EMEA", "APAC", None], "revenue": [1.5, None, 3.0], "units": [10, 20, 30]},
-            index=self.pd.Index(["a", "b", "c"], name="key"),
+            index=pd.Index(["a", "b", "c"], name="key"),
         )
 
     def test_basic(self):
@@ -240,28 +246,24 @@ class TestDataFrame:
         assert cells(t)[0] == ["a", "10"]
 
     def test_unnamed_index(self):
-        df = self.pd.DataFrame({"v": [1]})
+        df = pd.DataFrame({"v": [1]})
         t = Table.from_dataframe(df, index=True)
         assert headers(t) == ["", "v"]
         assert cells(t) == [["0", "1"]]
 
     def test_pandas_na_and_nat(self):
-        df = self.pd.DataFrame({
-            "n": self.pd.array([1, None], dtype="Int64"),
-            "t": [self.pd.Timestamp("2026-01-02"), self.pd.NaT],
+        df = pd.DataFrame({
+            "n": pd.array([1, None], dtype="Int64"),
+            "t": [pd.Timestamp("2026-01-02"), pd.NaT],
         })
         t = Table.from_dataframe(df, missing="n/a")
         assert cells(t) == [["1", "2026-01-02 00:00:00"], ["n/a", "n/a"]]
         assert t.align == ["right", "left"]
 
     def test_numpy_scalars_numeric(self):
-        df = self.pd.DataFrame({"x": [1, 2]})
+        df = pd.DataFrame({"x": [1, 2]})
         t = Table.from_dataframe(df, formats="{:03d}")
         assert cells(t) == [["001"], ["002"]]
-
-    def test_rejects_non_dataframe(self):
-        with pytest.raises(TypeError, match="DataFrame"):
-            Table.from_dataframe([{"a": 1}])
 
 
 class TestBuilder:
@@ -280,8 +282,12 @@ class TestBuilder:
         assert '<td style="text-align:right">1,234,568</td>' in r.to_html()
         assert "\\begin{longtable}{lrr}" in r.to_latex()
 
+    def test_rejects_non_dataframe(self):
+        with pytest.raises(TypeError, match="DataFrame"):
+            Table.from_dataframe([{"a": 1}])
+
+    @requires_pandas
     def test_dataframe_builder(self):
-        pd = pytest.importorskip("pandas")
         r = Report("T", date="")
         r.table_from_dataframe(pd.DataFrame({"a": [1]}), headers=["A"])
         assert "| A |\n| ---: |\n| 1 |" in r.to_markdown()

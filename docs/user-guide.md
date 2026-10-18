@@ -8,17 +8,18 @@ This guide walks through every feature. For a terse signature-level listing, see
 
 1. [Creating a report](#creating-a-report)
 2. [Sections](#sections)
-3. [Text and inline formatting](#text-and-inline-formatting)
+3. [Text and inline formatting](#text-and-inline-formatting) — including [footnotes](#footnotes)
 4. [Tables](#tables) — including [tables from data](#tables-from-data)
 5. [Lists](#lists)
 6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules)
-7. [Table of contents](#table-of-contents)
-8. [Raw passthrough content](#raw-passthrough-content)
-9. [Exporting](#exporting)
-10. [Exporting to LaTeX](#exporting-to-latex)
-11. [Exporting to PDF](#exporting-to-pdf)
-12. [Customizing the HTML output](#customizing-the-html-output)
-13. [Escaping and safety](#escaping-and-safety)
+7. [Callouts](#callouts)
+8. [Table of contents](#table-of-contents)
+9. [Raw passthrough content](#raw-passthrough-content)
+10. [Exporting](#exporting)
+11. [Exporting to LaTeX](#exporting-to-latex)
+12. [Exporting to PDF](#exporting-to-pdf)
+13. [Customizing the HTML output](#customizing-the-html-output)
+14. [Escaping and safety](#escaping-and-safety)
 
 ---
 
@@ -85,6 +86,40 @@ s.paragraph([
 ```
 
 Each span renders correctly per format (`**bold**` vs `<strong>`, etc.). Non-string items in the list (numbers, `None`) are coerced with `str()`.
+
+### Strikethrough, subscript, superscript
+
+```python
+from reportsmith import strike, sub, sup
+
+s.paragraph(["Price: ", strike("$49"), " $39"])
+s.paragraph(["H", sub("2"), "O boils at 100 °C; area is 12 m", sup("2"), "."])
+```
+
+| Helper | Markdown | HTML | LaTeX |
+| --- | --- | --- | --- |
+| `strike()` | `~~text~~` | `<del>` | `\sout{}` (ulem) |
+| `sub()` | `<sub>` | `<sub>` | `\textsubscript{}` |
+| `sup()` | `<sup>` | `<sup>` | `\textsuperscript{}` |
+
+Markdown has no syntax for sub/superscript, so the HTML tags are used; GitHub and most Markdown renderers display them. PDF renders all three natively.
+
+### Footnotes
+
+`footnote(text)` places a numbered marker where it appears, with `text` as the note. Footnotes are numbered in document order and work anywhere inline text does — paragraphs, list items, table cells, callouts, even section titles:
+
+```python
+from reportsmith import footnote
+
+s.paragraph(["Revenue grew 21%", footnote("Excluding the APAC acquisition."), " year over year."])
+```
+
+- **Markdown:** GitHub-style `[^1]` markers, with the definitions collected at the end of the document.
+- **HTML:** linked superscript markers and a numbered notes list at the end, each with a link back to its marker.
+- **LaTeX:** `\footnote{...}` — real page-bottom footnotes. A footnote in a heading is kept out of the table of contents and PDF bookmarks.
+- **PDF:** linked superscript markers and a "Notes" section after the content (endnotes). In table cells, where styles can't mix, the marker is a superscript digit (or `[1]` with the Latin-1 fallback font).
+
+Footnotes never appear in table of contents entries or heading anchors.
 
 ## Tables
 
@@ -176,6 +211,32 @@ s.horizontal_rule()
 - `language` becomes the fence info string in Markdown and a `language-*` class in HTML (ready for highlight.js/Prism if you add one via custom CSS/raw HTML).
 - If the code itself contains ` ``` `, the Markdown fence automatically widens so the block stays intact.
 
+## Callouts
+
+`callout(kind, content=None, title="")` adds a highlighted box for notes, tips and warnings. There are five kinds, matching GitHub's alerts: `"note"`, `"tip"`, `"important"`, `"warning"` and `"caution"`.
+
+```python
+report.callout("note", "Figures are unaudited.")
+report.callout("tip", ["Run ", code("make report"), " to regenerate."], title="Pro tip")
+
+# Several blocks: use it like a section
+with report.callout("warning", title="Breaking change") as c:
+    c.paragraph("The v1 API is removed on 1 March:")
+    c.bullet_list(["/v1/orders", "/v1/invoices"])
+    c.code("curl https://api.example.com/v2/orders", language="bash")
+```
+
+`content`, if given, becomes the callout's first paragraph. `callout()` returns the new callout (not the container), so more content can be added — paragraphs, lists, code, tables, images, headings, even nested callouts. Sections and tables of contents aren't allowed inside a callout (they raise `TypeError`), so callouts never change the document outline; headings inside one stay out of the table of contents.
+
+The title defaults to the capitalized kind ("Warning"). Rendering:
+
+| Format | Output |
+| --- | --- |
+| Markdown | A GitHub alert: `> [!WARNING]` followed by the content. Alerts have no custom titles, so a `title` becomes a bold first line. Other Markdown viewers show a block quote. |
+| HTML | `<div class="callout callout-warning">` with a coloured left border and title, styled for light and dark mode by the default stylesheet. |
+| LaTeX | A coloured `tcolorbox` that can break across pages. |
+| PDF | A coloured bar and title; the bar continues across page breaks. |
+
 ## Table of contents
 
 `toc(title="Contents", depth=3)` adds a table of contents listing every section and explicit heading in the report, in document order. It always covers the whole report, so it can go anywhere — usually right after creating the report:
@@ -256,7 +317,7 @@ The document compiles with pdfLaTeX, XeLaTeX, or LuaLaTeX. It uses the `article`
 
 Options (on `to_latex()`, `save_latex()`, and `LatexRenderer`):
 
-- `full_document=False` returns only the body (sections onward — no preamble, title block, or `\begin{document}`), ready to `\input` into your own document. Your document then needs the packages listed in `reportsmith.renderers.latex.DEFAULT_PREAMBLE`.
+- `full_document=False` returns only the body (sections onward — no preamble, title block, or `\begin{document}`), ready to `\input` into your own document. Your document then needs the packages listed in `reportsmith.renderers.latex.DEFAULT_PREAMBLE`, and the `rscallout` environment and `rs*` colours defined there if the report contains callouts.
 - `document_class="report"` / `class_options="12pt,letterpaper"` change the `\documentclass` line.
 - `preamble="..."` is appended after the built-in preamble, e.g. `preamble="\\usepackage{amsmath}"` or `\\renewcommand` tweaks.
 - `numbered=True` numbers sections; by default they are unnumbered (but still bookmarked).
@@ -267,6 +328,8 @@ Details and limitations:
 - **Images** are embedded with `\includegraphics` in a figure (the title, or else the alt text, becomes the caption) and scaled down to the text width if needed. Paths are resolved relative to where you compile, and a missing file is a compile error. `http(s)://` images can't be embedded, so they render as a link instead.
 - **Lists** nest at most four levels deep (a LaTeX limit). Empty lists are omitted.
 - **Multi-line table cells** are rendered as stacked lines within the cell.
+
+## Exporting to PDF
 
 PDF export is an optional extra built on [fpdf2](https://py-pdf.github.io/fpdf2/):
 

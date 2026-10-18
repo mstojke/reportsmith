@@ -17,8 +17,9 @@ Quick start::
     report.save_html("report.html")
 """
 
-from .inline import Inline, bold, code, italic, link
+from .inline import Inline, bold, code, footnote, italic, link, strike, sub, sup
 from .elements import (
+    Callout,
     CodeBlock,
     Heading,
     HorizontalRule,
@@ -52,11 +53,16 @@ __all__ = [
     "Quote",
     "HorizontalRule",
     "Raw",
+    "Callout",
     "Inline",
     "bold",
     "italic",
     "code",
     "link",
+    "strike",
+    "sub",
+    "sup",
+    "footnote",
     "MarkdownRenderer",
     "HtmlRenderer",
     "PdfRenderer",

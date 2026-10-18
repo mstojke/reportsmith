@@ -5,6 +5,11 @@ import re
 
 import pytest
 
+try:
+    import fpdf
+except ImportError:
+    fpdf = None
+
 from reportsmith import Report, TableOfContents, bold, link
 from reportsmith.toc import Slugger, build_tree, collect_entries
 
@@ -217,9 +222,8 @@ class TestLatex:
         assert "\\setcounter{tocdepth}{1}" in tex
 
 
+@pytest.mark.skipif(fpdf is None, reason="fpdf2 not installed")
 class TestPdf:
-    fpdf = pytest.importorskip("fpdf")
-
     def test_renders(self):
         out = sample_report().to_pdf()
         assert out.startswith(b"%PDF-")
@@ -260,5 +264,5 @@ class TestPdf:
                     continue
                 rows += 1
                 name, page = m.group(1), int(m.group(2))
-                assert name in [l.strip() for l in texts[page - 1].splitlines()]
+                assert name in [line_.strip() for line_ in texts[page - 1].splitlines()]
         assert rows == 120

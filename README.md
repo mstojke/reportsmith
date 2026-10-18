@@ -1,5 +1,7 @@
 # reportsmith
 
+[![Tests](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml/badge.svg)](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml)
+
 A small, dependency-free Python library for building reports programmatically and exporting them to **Markdown**, a **standalone styled HTML** document, **LaTeX**, or (optionally) **PDF**.
 
 ## Features
@@ -8,7 +10,8 @@ A small, dependency-free Python library for building reports programmatically an
 - Table of contents in every format: linked lists in Markdown/HTML, `\tableofcontents` in LaTeX, clickable entries with page numbers in PDF
 - Tables straight from data: lists of dicts, CSV files, or pandas DataFrames, with number formatting, missing-value placeholders, and automatic right-alignment of numeric columns
 - Elements: headings, paragraphs, tables (with alignment and captions), bullet/numbered lists (nestable), code blocks, block quotes, images, horizontal rules, and format-specific raw passthrough
-- Inline formatting helpers: `bold()`, `italic()`, `code()`, `link()` — render correctly in both formats
+- Inline formatting helpers: `bold()`, `italic()`, `code()`, `link()`, `strike()`, `sub()`, `sup()`, and numbered `footnote()`s — rendered natively in every format
+- Callouts (note, tip, important, warning, caution): GitHub alerts in Markdown, coloured boxes in HTML, LaTeX and PDF
 - Correct escaping everywhere: HTML entities, Markdown table pipes, code fences that widen when the source contains ` ``` `
 - HTML export ships with a clean embedded stylesheet (light/dark aware) that you can replace with your own CSS
 - LaTeX export: a compilable document (pdfLaTeX/XeLaTeX/LuaLaTeX) with booktabs tables, framed code blocks, hyperlinks, and PDF bookmarks — or a body fragment to `\input` into your own document
@@ -94,6 +97,7 @@ Builder methods (all chainable, also available on sections):
 | `horizontal_rule()` | Rule |
 | `raw(content, format="both")` | Verbatim content for `"markdown"`, `"html"`, `"latex"`, or `"both"` (Markdown + HTML) |
 | `toc(title="Contents", depth=3)` | Table of contents for the whole report; `depth` 1–5 sets how many heading levels are listed |
+| `callout(kind="note", content=None, title="")` | Callout box (`"note"`, `"tip"`, `"important"`, `"warning"`, `"caution"`); returns the callout, usable as a context manager |
 | `add(element)` | Any pre-built element |
 
 Anywhere text is accepted you may pass a plain string or a list mixing strings with `bold()`, `italic()`, `code()`, and `link(text, href)` spans.
@@ -108,17 +112,35 @@ Anywhere text is accepted you may pass a plain string or a list mixing strings w
 
 ## Running tests
 
-The test suite (256 tests) lives in `tests/`:
+Install the development dependencies (pytest, coverage, the optional fpdf2 and pandas integrations, pypdf for checking PDF output, ruff and mypy):
+
+```bash
+pip install -e .[dev]
+```
+
+The test suite lives in `tests/`. Tests for optional integrations are skipped when their package isn't installed.
 
 ```bash
 python -m pytest
 ```
 
-With a coverage report (requires `pytest-cov`):
+With a coverage report:
 
 ```bash
 python -m pytest --cov=reportsmith --cov-report=term-missing
 ```
+
+Lint and type-check:
+
+```bash
+ruff check .
+```
+
+```bash
+mypy
+```
+
+CI runs all of these on Python 3.9–3.13, runs the suite once more with no optional dependencies installed, and compiles the LaTeX output of every example with pdfLaTeX, XeLaTeX, and LuaLaTeX.
 
 ## Changelog
 
