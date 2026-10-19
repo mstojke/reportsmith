@@ -12,6 +12,7 @@ A small, dependency-free Python library for building reports programmatically an
 - Tables straight from data: lists of dicts, CSV files, or pandas DataFrames, with number formatting, missing-value placeholders, and automatic right-alignment of numeric columns
 - Elements: headings, paragraphs, tables (with alignment and captions), bullet/numbered lists (nestable), code blocks, block quotes, images, horizontal rules, and format-specific raw passthrough
 - Inline formatting helpers: `bold()`, `italic()`, `code()`, `link()`, `strike()`, `sub()`, `sup()`, and numbered `footnote()`s — rendered natively in every format
+- Figures from image files, image bytes, or matplotlib plots, with numbered captions ("Figure 1", "Table 2") and `ref()` cross-references
 - Callouts (note, tip, important, warning, caution): GitHub alerts in Markdown, coloured boxes in HTML, LaTeX and PDF
 - Correct escaping everywhere: HTML entities, Markdown table pipes, code fences that widen when the source contains ` ``` `
 - HTML export ships with a clean embedded stylesheet (light/dark aware) that you can replace with your own CSS
@@ -92,9 +93,10 @@ Builder methods (all chainable, also available on sections):
 | `quote(content)` | Block quote |
 | `code(source, language="")` | Fenced/`<pre>` code block |
 | `bullet_list(items)` / `numbered_list(items)` | List; items may be text or a nested `ListElement` |
-| `table(headers, rows, caption="", align=None)` | Table; `align` entries are `"left"`, `"center"`, `"right"` |
+| `table(headers, rows, caption="", align=None, label="")` | Table; `align` entries are `"left"`, `"center"`, `"right"`; captioned tables are numbered |
 | `table_from_records(records)` / `table_from_csv(source)` / `table_from_dataframe(df)` | Table built from data; options `columns`, `headers`, `formats`, `missing`, `align`, `caption` |
-| `image(src, alt="", title="")` | Image |
+| `figure(source, caption="", alt="", label="", width=None)` | Figure from an image path, image bytes, or a plot; captioned figures are numbered |
+| `image(src, alt="", title="")` | Image (unnumbered; may be a remote URL) |
 | `horizontal_rule()` | Rule |
 | `raw(content, format="both")` | Verbatim content for `"markdown"`, `"html"`, `"latex"`, or `"both"` (Markdown + HTML) |
 | `toc(title="Contents", depth=3)` | Table of contents for the whole report; `depth` 1–5 sets how many heading levels are listed |
@@ -113,7 +115,7 @@ Anywhere text is accepted you may pass a plain string or a list mixing strings w
 
 ## Running tests
 
-Install the development dependencies (pytest, coverage, the optional fpdf2 and pandas integrations, pypdf for checking PDF output, ruff and mypy):
+Install the development dependencies (pytest, coverage, the optional fpdf2, pandas and matplotlib integrations, pypdf for checking PDF output, ruff and mypy):
 
 ```bash
 pip install -e .[dev]

@@ -40,11 +40,15 @@ class Report(Container):
 
     # -- export ----------------------------------------------------------
 
-    def to_markdown(self) -> str:
-        """Render the report as a Markdown string."""
+    def to_markdown(self, assets_dir: Optional[Union[str, Path]] = None) -> str:
+        """Render the report as a Markdown string.
+
+        Figures made from plots or image bytes are embedded as data URIs,
+        or written as files into ``assets_dir`` when given.
+        """
         from .renderers.markdown import MarkdownRenderer
 
-        return MarkdownRenderer().render(self)
+        return MarkdownRenderer(assets_dir=assets_dir).render(self)
 
     def to_html(self, full_document: bool = True, css: Optional[str] = None) -> str:
         """Render the report as HTML.
@@ -80,13 +84,15 @@ class Report(Container):
         class_options: str = "11pt,a4paper",
         preamble: str = "",
         numbered: bool = False,
+        assets_dir: Optional[Union[str, Path]] = None,
     ) -> str:
         """Render the report as LaTeX source.
 
         ``full_document=True`` (default) produces a compilable document with
         a title block; ``False`` produces only the body content. ``preamble``
         is appended to the built-in preamble; ``numbered=True`` numbers
-        sections.
+        sections. Figures made from plots or image bytes are written as files
+        into ``assets_dir``, which is required when the report has any.
         """
         from .renderers.latex import LatexRenderer
 
@@ -96,12 +102,21 @@ class Report(Container):
             class_options=class_options,
             preamble=preamble,
             numbered=numbered,
+            assets_dir=assets_dir,
         ).render(self)
 
     def save_markdown(self, path: Union[str, Path]) -> Path:
-        """Write the Markdown export to ``path`` and return it."""
+        """Write the Markdown export to ``path`` and return it.
+
+        Figures made from plots or image bytes are written into a
+        ``<name>_files`` folder next to it.
+        """
+        from .renderers.markdown import MarkdownRenderer
+
         path = Path(path)
-        path.write_text(self.to_markdown(), encoding="utf-8")
+        assets_dir, assets_url = _assets_for(path)
+        text = MarkdownRenderer(assets_dir=assets_dir, assets_url=assets_url).render(self)
+        path.write_text(text, encoding="utf-8")
         return path
 
     def save_html(
@@ -121,18 +136,25 @@ class Report(Container):
         preamble: str = "",
         numbered: bool = False,
     ) -> Path:
-        """Write the LaTeX export to ``path`` and return it."""
+        """Write the LaTeX export to ``path`` and return it.
+
+        Figures made from plots or image bytes are written into a
+        ``<name>_files`` folder next to it (plots as vector PDF).
+        """
+        from .renderers.latex import LatexRenderer
+
         path = Path(path)
-        path.write_text(
-            self.to_latex(
-                full_document=full_document,
-                document_class=document_class,
-                class_options=class_options,
-                preamble=preamble,
-                numbered=numbered,
-            ),
-            encoding="utf-8",
-        )
+        assets_dir, assets_url = _assets_for(path)
+        text = LatexRenderer(
+            full_document=full_document,
+            document_class=document_class,
+            class_options=class_options,
+            preamble=preamble,
+            numbered=numbered,
+            assets_dir=assets_dir,
+            assets_url=assets_url,
+        ).render(self)
+        path.write_text(text, encoding="utf-8")
         return path
 
     def save_pdf(
@@ -145,3 +167,10 @@ class Report(Container):
         path = Path(path)
         path.write_bytes(self.to_pdf(fonts=fonts, mono_fonts=mono_fonts))
         return path
+
+
+def _assets_for(path: Path) -> tuple[Path, str]:
+    """Folder for a saved document's figure files, and how the document
+    refers to it (relative, so the output can be moved as a whole)."""
+    folder = f"{path.stem}_files"
+    return path.parent / folder, f"{folder}/"

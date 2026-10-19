@@ -13,7 +13,9 @@ font paths to control the typeface.
 
 from __future__ import annotations
 
+import io
 import logging
+import re
 import os
 from typing import TYPE_CHECKING, Optional, Sequence
 
@@ -21,6 +23,7 @@ from ..elements import (
     Callout,
     CodeBlock,
     Element,
+    Figure,
     Heading,
     HorizontalRule,
     Image,
@@ -33,6 +36,7 @@ from ..elements import (
     TableOfContents,
 )
 from ..inline import Inline, InlineContent
+from ..numbering import Numbering
 from ..toc import collect_entries, find_tocs, plain_text
 
 if TYPE_CHECKING:
@@ -60,6 +64,25 @@ _CALLOUT_COLORS = {
 }
 _SUPERSCRIPT = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
 _SUBSCRIPT = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+# fpdf2 markdown markers for styled spans in table cells.
+_CELL_MARKERS = {"bold": "**", "italic": "__", "strike": "~~"}
+# Link text fpdf2's markdown link pattern accepts: no brackets.
+_LINKABLE = re.compile(r"[^\[\]]+")
+# A run of backslashes followed by a markdown marker, or any other run.
+_MD_ESCAPE_RE = re.compile(r"(\\*)(\*\*|__|~~|--)|(\\+)")
+
+
+def _fpdf_halves_backslashes() -> bool:
+    """Whether fpdf2 treats backslashes outside markers as escapes (2.8.6+)."""
+    try:
+        from fpdf import FPDF_VERSION
+    except ImportError:  # fpdf2 not installed: the PDF renderer can't run anyway
+        return True
+    version = tuple(int(part) for part in re.findall(r"\d+", FPDF_VERSION)[:3])
+    return version >= (2, 8, 6)
+
+
+_FPDF_HALVES_BACKSLASHES = _fpdf_halves_backslashes()
 
 _WIN_FONTS = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
 _MAC_FONTS = "/System/Library/Fonts/Supplemental"
@@ -127,6 +150,8 @@ class PdfRenderer:
         self._toc_ids = {id(entry.element) for entry in self._toc_entries}
         self._toc_targets: dict[int, tuple[int, int]] = {}  # id -> (link, page)
         self._footnotes: list[tuple[str, int]] = []  # (text, link)
+        self._numbering = Numbering(report)
+        self._ref_links: dict[str, int] = {}  # label -> fpdf link id
         pdf.add_page()
         pdf.set_title(report.title)
         if report.author:
@@ -144,6 +169,12 @@ class PdfRenderer:
         # fontTools logs a benign warning per unsupported table when
         # subsetting system fonts (e.g. Arial's MERG table); silence it.
         logging.getLogger("fontTools.subset").setLevel(logging.ERROR)
+        # Links in table cells (rendered from markdown) match body links.
+        # fpdf2 < 2.8.6 needs a colour object here, not an (r, g, b) tuple;
+        # set_text_color() builds one portably.
+        pdf.set_text_color(*_ACCENT)
+        pdf.MARKDOWN_LINK_COLOR = pdf.text_color
+        pdf.set_text_color(*_TEXT)
         body = _find_fonts(_BODY_FONT_CANDIDATES, self._fonts)
         if body:
             for style, path in zip(("", "B", "I", "BI"), body):
@@ -213,6 +244,8 @@ class PdfRenderer:
             pdf.ln(1.5)
         elif isinstance(el, Table):
             self._table(pdf, el)
+        elif isinstance(el, Figure):
+            self._figure(pdf, el)
         elif isinstance(el, Image):
             self._image(pdf, el)
         elif isinstance(el, HorizontalRule):
@@ -374,24 +407,77 @@ class PdfRenderer:
                 self._write_parts(pdf, item, BODY_SIZE)
                 pdf.ln(BODY_SIZE * 0.55)
 
+    def _ref_link(self, pdf, label: str) -> int:
+        # Created on first use, so references may come before their target.
+        if label not in self._ref_links:
+            self._ref_links[label] = pdf.add_link()
+        return self._ref_links[label]
+
+    def _mark_target(self, pdf, el: "Figure | Table") -> None:
+        if el.label:
+            pdf.set_link(self._ref_link(pdf, el.label), y=pdf.get_y(), page=pdf.page_no())
+
+    def _caption(self, pdf, el: "Figure | Table", align: str = "L") -> None:
+        pdf.ln(1)
+        pdf.set_text_color(*_MUTED)
+        pdf.set_font(self.body_family, "I", 9)
+        text = f"**{self._numbering.caption_label(el)}:** {self._md_escape(el.caption)}"
+        pdf.multi_cell(0, 5, self._t(text), align=align, markdown=True, new_x="LMARGIN", new_y="NEXT")
+
+    def _figure(self, pdf, el: Figure) -> None:
+        self._mark_target(pdf, el)
+        w = pdf.epw * (el.width or 1)
+        x = pdf.l_margin + (pdf.epw - w) / 2
+        try:
+            if el.kind == "path":
+                source: object = str(el.source)
+            else:
+                source = io.BytesIO(el.image_data("png")[0])
+            pdf.image(source, x=x, w=w)
+        except Exception:
+            # Missing/unreadable file: render a placeholder, keep going.
+            pdf.set_font(self.body_family, "I", 10)
+            pdf.set_text_color(*_MUTED)
+            missing = el.alt or (str(el.source) if el.kind == "path" else "figure")
+            pdf.multi_cell(0, 6, self._t(f"[Figure: {missing}]"), new_x="LMARGIN", new_y="NEXT")
+        if el.caption:
+            self._caption(pdf, el, align="C")
+        pdf.ln(2.5)
+
+    @staticmethod
+    def _md_escape(text: str) -> str:
+        """Escape text for fpdf2's markdown so it is shown literally.
+
+        k backslashes before a marker become 2k+1 (k literal backslashes and
+        a literal marker) in every fpdf2 version. Backslashes elsewhere are
+        halved by fpdf2 >= 2.8.6 but kept as-is by older versions, so they
+        are only doubled for the newer ones.
+        """
+
+        def replace(match: "re.Match[str]") -> str:
+            backslashes, marker, other = match.groups()
+            if marker:
+                return "\\" * (2 * len(backslashes) + 1) + marker
+            return other * 2 if _FPDF_HALVES_BACKSLASHES else other
+
+        return _MD_ESCAPE_RE.sub(replace, text)
+
     def _table(self, pdf, el: Table) -> None:
+        self._mark_target(pdf, el)
         pdf.set_font(self.body_family, "", 10)
         pdf.set_text_color(*_TEXT)
         pdf.set_draw_color(*_BORDER)
         aligns = tuple(a.upper() for a in el.align)
-        with pdf.table(text_align=aligns, line_height=6) as table:
+        with pdf.table(text_align=aligns, line_height=6, markdown=True) as table:
             header = table.row()
             for parts in el.headers:
-                header.cell(self._t(self._cell_text(pdf, parts)))
+                header.cell(self._t(self._cell_text(pdf, parts, heading=True)))
             for row_parts in el.rows:
                 row = table.row()
                 for parts in row_parts:
                     row.cell(self._t(self._cell_text(pdf, parts)))
         if el.caption:
-            pdf.ln(1)
-            pdf.set_font(self.body_family, "I", 9)
-            pdf.set_text_color(*_MUTED)
-            pdf.multi_cell(0, 5, self._t(el.caption), new_x="LMARGIN", new_y="NEXT")
+            self._caption(pdf, el)
         pdf.ln(2.5)
 
     def _image(self, pdf, el: Image) -> None:
@@ -446,6 +532,12 @@ class PdfRenderer:
                     pdf.char_vpos = part.style.upper()
                     pdf.write(h, text)
                     pdf.char_vpos = "LINE"
+                elif part.style == "ref":
+                    shown = self._numbering.ref_text(part.href, part.text)
+                    pdf.set_font(self.body_family, base_style, size)
+                    pdf.set_text_color(*_ACCENT)
+                    pdf.write(h, self._t(shown), link=self._ref_link(pdf, part.href))
+                    pdf.set_text_color(*color)
                 elif part.style == "footnote":
                     n, link = self._add_footnote(pdf, part.text)
                     pdf.set_font(self.body_family, base_style, size)
@@ -469,22 +561,39 @@ class PdfRenderer:
     def _plain(parts: list[InlineContent]) -> str:
         return plain_text(parts)
 
-    def _cell_text(self, pdf, parts: list[InlineContent]) -> str:
-        """Plain text for table cells, which can't mix styles: footnotes
-        become superscript-digit markers, other spans keep their text."""
+    def _cell_text(self, pdf, parts: list[InlineContent], heading: bool = False) -> str:
+        """Table cell content in fpdf2's markdown, which tables render with
+        mixed styles: bold, italic, strikethrough and links. All text is
+        escaped, so user text is never read as markup. Code spans and
+        cross-references become plain text (cells can't switch fonts or hold
+        internal links); footnotes and digit sub/superscripts use Unicode
+        superscript/subscript characters when the font has them."""
         out = []
         for p in parts:
-            if isinstance(p, Inline) and p.style == "footnote":
+            if not isinstance(p, Inline):
+                out.append(self._md_escape(str(p)))
+            elif heading and p.style == "bold":
+                # Header cells are already bold; a marker would toggle it off.
+                out.append(self._md_escape(p.text))
+            elif p.style in _CELL_MARKERS:
+                marker = _CELL_MARKERS[p.style]
+                out.append(f"{marker}{self._md_escape(p.text)}{marker}")
+            elif p.style == "link" and _LINKABLE.fullmatch(p.text) and "(" not in p.href and ")" not in p.href:
+                # Link text is taken literally by fpdf2, so it isn't escaped.
+                out.append(f"[{p.text}]({p.href})")
+            elif p.style == "footnote":
                 n, _ = self._add_footnote(pdf, p.text)
                 marker = str(n).translate(_SUPERSCRIPT)
                 out.append(marker if self._has_glyphs(pdf, marker) else f"[{n}]")
-            elif isinstance(p, Inline) and p.style in ("sub", "sup") and p.text.isdigit():
+            elif p.style in ("sub", "sup") and p.text.isdigit():
                 # Digits have Unicode sub/superscript forms (CO₂, m²), but
                 # not every font has them (Arial lacks subscripts).
                 mapped = p.text.translate(_SUPERSCRIPT if p.style == "sup" else _SUBSCRIPT)
                 out.append(mapped if self._has_glyphs(pdf, mapped) else p.text)
+            elif p.style == "ref":
+                out.append(self._md_escape(self._numbering.ref_text(p.href, p.text)))
             else:
-                out.append(p.text if isinstance(p, Inline) else str(p))
+                out.append(self._md_escape(p.text))
         return "".join(out)
 
     def _has_glyphs(self, pdf, text: str) -> bool:

@@ -9,6 +9,7 @@ from ..elements import (
     Callout,
     CodeBlock,
     Element,
+    Figure,
     Heading,
     HorizontalRule,
     Image,
@@ -20,7 +21,9 @@ from ..elements import (
     Table,
     TableOfContents,
 )
+from ..assets import data_uri, path_reference
 from ..inline import Inline, InlineContent
+from ..numbering import Numbering
 from ..toc import TocEntry, build_tree, collect_entries, find_tocs, heading_anchors
 
 if TYPE_CHECKING:
@@ -95,6 +98,11 @@ nav.toc a:hover { text-decoration: underline; }
 sup.footnote-ref a { text-decoration: none; }
 .footnotes { color: var(--muted); font-size: 0.9rem; margin-top: 3em; }
 .footnote-back { text-decoration: none; }
+figure { margin: 1.5em 0; text-align: center; }
+figure img { max-width: 100%; }
+figcaption, caption { color: var(--muted); font-size: 0.85rem; }
+figcaption { margin-top: 0.4em; }
+.caption-label { font-weight: 600; }
 """
 
 
@@ -141,6 +149,7 @@ class HtmlRenderer:
         if meta:
             parts.append('<div class="report-meta">\n' + "\n".join(meta) + "\n</div>\n")
         self._footnotes: list[str] = []
+        self._numbering = Numbering(report)
         for child in report.children:
             parts.append(self._render_element(child))
         if self._footnotes:
@@ -174,6 +183,8 @@ class HtmlRenderer:
             return self._list(el)
         if isinstance(el, Table):
             return self._table(el)
+        if isinstance(el, Figure):
+            return self._figure(el)
         if isinstance(el, Image):
             title = f' title="{escape(el.title, quote=True)}"' if el.title else ""
             return (
@@ -247,10 +258,35 @@ class HtmlRenderer:
         out.append(f"</{tag}>\n")
         return "".join(out)
 
-    def _table(self, el: Table) -> str:
-        out = ["<table>\n"]
+    def _target_id(self, el: "Figure | Table") -> str:
+        if not el.label:
+            return ""
+        prefix = "fig" if isinstance(el, Figure) else "tbl"
+        return f' id="{prefix}-{escape(el.label, quote=True)}"'
+
+    def _caption(self, el: "Figure | Table") -> str:
+        label = self._numbering.caption_label(el)
+        return f'<span class="caption-label">{label}:</span> {escape(el.caption)}'
+
+    def _figure(self, el: Figure) -> str:
+        if el.kind == "path":
+            src = path_reference(el.source)
+        else:
+            src = data_uri(*el.image_data("png"))
+        style = f' style="width:{el.width * 100:g}%"' if el.width else ""
+        out = [
+            f"<figure{self._target_id(el)}>\n",
+            f'<img src="{escape(src, quote=True)}" alt="{escape(el.alt, quote=True)}"{style}>\n',
+        ]
         if el.caption:
-            out.append(f"<caption>{escape(el.caption)}</caption>\n")
+            out.append(f"<figcaption>{self._caption(el)}</figcaption>\n")
+        out.append("</figure>\n")
+        return "".join(out)
+
+    def _table(self, el: Table) -> str:
+        out = [f"<table{self._target_id(el)}>\n"]
+        if el.caption:
+            out.append(f"<caption>{self._caption(el)}</caption>\n")
         out.append("<thead>\n<tr>")
         for header, align in zip(el.headers, el.align):
             out.append(f'<th style="text-align:{align}">{self._inline(header)}</th>')
@@ -288,6 +324,11 @@ class HtmlRenderer:
             return f"<del>{text}</del>"
         if span.style in ("sub", "sup"):
             return f"<{span.style}>{text}</{span.style}>"
+        if span.style == "ref":
+            kind, _ = self._numbering.resolve(span.href)
+            prefix = "fig" if kind == "figure" else "tbl"
+            text = escape(self._numbering.ref_text(span.href, span.text))
+            return f'<a href="#{prefix}-{escape(span.href, quote=True)}" class="ref">{text}</a>'
         if span.style == "footnote":
             self._footnotes.append(span.text)
             n = len(self._footnotes)

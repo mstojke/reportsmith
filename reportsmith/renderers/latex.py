@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional, Union
 
 from ..elements import (
     Callout,
     CodeBlock,
     Element,
+    Figure,
     Heading,
     HorizontalRule,
     Image,
@@ -19,7 +21,9 @@ from ..elements import (
     Table,
     TableOfContents,
 )
+from ..assets import Assets, path_reference
 from ..inline import Inline, InlineContent
+from ..numbering import LATEX_PREFIXES, KIND_NAMES, Numbering
 
 if TYPE_CHECKING:
     from ..report import Report
@@ -38,6 +42,7 @@ DEFAULT_PREAMBLE = r"""\usepackage{iftex}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{longtable}
+\usepackage{caption}
 \usepackage{fancyvrb}
 \usepackage{xcolor}
 \usepackage[normalem]{ulem}
@@ -111,6 +116,11 @@ class LatexRenderer:
     otherwise only the body content is produced, for ``\\input`` into an
     existing document. ``preamble`` is appended after the default preamble,
     and ``numbered=True`` turns on section numbering.
+
+    Figures from plots or bytes must be written to files for
+    ``\\includegraphics``: pass ``assets_dir`` (referenced as ``assets_url``
+    + file name, default the directory path). ``Report.save_latex()`` does
+    this automatically.
     """
 
     def __init__(
@@ -120,7 +130,11 @@ class LatexRenderer:
         class_options: str = "11pt,a4paper",
         preamble: str = "",
         numbered: bool = False,
+        assets_dir: Optional[Union[str, Path]] = None,
+        assets_url: Optional[str] = None,
     ):
+        self.assets_dir = assets_dir
+        self.assets_url = assets_url
         self.full_document = full_document
         self.document_class = document_class
         self.class_options = class_options
@@ -128,6 +142,8 @@ class LatexRenderer:
         self.numbered = numbered
 
     def render(self, report: "Report") -> str:
+        self._numbering = Numbering(report)
+        self._assets = Assets(self.assets_dir, self.assets_url) if self.assets_dir is not None else None
         body = "".join(self._render_element(child) for child in report.children)
         if not self.full_document:
             return body
@@ -178,6 +194,8 @@ class LatexRenderer:
             return self._list(el) + "\n" if el.items else ""
         if isinstance(el, Table):
             return self._table(el)
+        if isinstance(el, Figure):
+            return self._figure(el)
         if isinstance(el, Image):
             return self._image(el)
         if isinstance(el, HorizontalRule):
@@ -262,7 +280,8 @@ class LatexRenderer:
         out.extend(row(r) for r in el.rows)
         out.append("\\bottomrule\n")
         if el.caption:
-            out.append(f"\\caption{{{escape_latex(el.caption)}}} \\\\\n")
+            label = f"\\label{{tab:{el.label}}}" if el.label else ""
+            out.append(f"\\caption{{{escape_latex(el.caption)}}}{label} \\\\\n")
         out.append("\\end{longtable}\n\n")
         return "".join(out)
 
@@ -274,6 +293,27 @@ class LatexRenderer:
         lines = " \\\\ ".join(text.split("\n"))
         return f"\\begin{{tabular}}[t]{{@{{}}{align}@{{}}}}{lines}\\end{{tabular}}"
 
+    def _figure(self, el: Figure) -> str:
+        if el.kind == "path":
+            path = path_reference(el.source)
+        else:
+            if el.format == "svg":
+                raise ValueError("LaTeX can't include SVG figures; pass PNG/JPEG data or a plot")
+            if self._assets is None:
+                raise ValueError(
+                    "Figures from plots or image bytes need files for LaTeX: use "
+                    "save_latex(), or pass assets_dir to to_latex()"
+                )
+            # Plots are saved as PDF, so they stay vector graphics.
+            path = self._assets.write(*el.image_data("pdf"))
+        width = f"[width={el.width:g}\\linewidth]" if el.width else ""
+        out = ["\\begin{figure}[htbp]\n\\centering\n", f"\\includegraphics{width}{{{path}}}\n"]
+        if el.caption:
+            label = f"\\label{{fig:{el.label}}}" if el.label else ""
+            out.append(f"\\caption{{{escape_latex(el.caption)}}}{label}\n")
+        out.append("\\end{figure}\n\n")
+        return "".join(out)
+
     def _image(self, el: Image) -> str:
         caption = el.title or el.alt
         if el.src.startswith(("http://", "https://")):
@@ -282,7 +322,7 @@ class LatexRenderer:
             return f"\\href{{{_escape_url(el.src)}}}{{[Image: {label}]}}\n\n"
         out = ["\\begin{figure}[htbp]\n\\centering\n", f"\\includegraphics{{{el.src}}}\n"]
         if caption:
-            out.append(f"\\caption{{{escape_latex(caption)}}}\n")
+            out.append(f"\\caption*{{{escape_latex(caption)}}}\n")
         out.append("\\end{figure}\n\n")
         return "".join(out)
 
@@ -313,6 +353,12 @@ class LatexRenderer:
             return f"\\textsubscript{{{text}}}"
         if span.style == "sup":
             return f"\\textsuperscript{{{text}}}"
+        if span.style == "ref":
+            kind, _ = self._numbering.resolve(span.href)
+            target = f"{LATEX_PREFIXES[kind]}:{span.href}"
+            # \ref* is the number without its own link; the whole phrase links.
+            shown = escape_latex(span.text) if span.text else f"{KIND_NAMES[kind]}~\\ref*{{{target}}}"
+            return f"\\hyperref[{target}]{{{shown}}}"
         if span.style == "footnote":
             return f"\\footnote{{{text}}}"
         return text

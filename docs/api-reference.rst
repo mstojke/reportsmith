@@ -12,8 +12,8 @@ Everything documented here is importable from the top-level package:
    from reportsmith import (
        Report, Section,
        Heading, Paragraph, Quote, CodeBlock, ListElement, Table, Image,
-       HorizontalRule, Raw, TableOfContents, Callout,
-       Inline, bold, italic, code, link, strike, sub, sup, footnote,
+       HorizontalRule, Raw, TableOfContents, Callout, Figure,
+       Inline, bold, italic, code, link, strike, sub, sup, footnote, ref,
        MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer,
    )
 
@@ -44,9 +44,11 @@ Report
    Inherits the full builder API from :class:`Container` and adds the
    export methods below.
 
-   .. py:method:: to_markdown() -> str
+   .. py:method:: to_markdown(assets_dir=None) -> str
 
-      Render the report as GitHub-flavored Markdown.
+      Render the report as GitHub-flavored Markdown. Figures made from plots
+      or image bytes are embedded as data URIs, or written as files into
+      *assets_dir* when given.
 
    .. py:method:: to_html(full_document=True, css=None) -> str
 
@@ -56,20 +58,25 @@ Report
 
    .. py:method:: save_markdown(path) -> pathlib.Path
 
-      Write UTF-8 Markdown to *path* and return it.
+      Write UTF-8 Markdown to *path* and return it. Figures made from plots
+      or image bytes are written to a ``<name>_files/`` folder next to it
+      and linked relatively.
 
    .. py:method:: save_html(path, full_document=True, css=None) -> pathlib.Path
 
       Write UTF-8 HTML to *path* and return it.
 
-   .. py:method:: to_latex(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False) -> str
+   .. py:method:: to_latex(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False, assets_dir=None) -> str
 
       Render the report as LaTeX source. See :class:`LatexRenderer` for the
-      parameters.
+      parameters. *assets_dir* is required when the report has figures made
+      from plots or image bytes.
 
    .. py:method:: save_latex(path, full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False) -> pathlib.Path
 
-      Write UTF-8 LaTeX to *path* and return it.
+      Write UTF-8 LaTeX to *path* and return it. Figures made from plots or
+      image bytes are written to a ``<name>_files/`` folder next to it
+      (plots as vector PDF).
 
    .. py:method:: to_pdf(fonts=None, mono_fonts=None) -> bytes
 
@@ -127,7 +134,7 @@ Container (builder API)
 
       Add a :class:`ListElement` with ``ordered=True``.
 
-   .. py:method:: table(headers, rows, caption="", align=None) -> Container
+   .. py:method:: table(headers, rows, caption="", align=None, label="") -> Container
 
       Add a :class:`Table`.
 
@@ -138,6 +145,10 @@ Container (builder API)
       Add a :class:`Table` built with :meth:`Table.from_records`,
       :meth:`Table.from_csv` or :meth:`Table.from_dataframe`; ``options``
       are passed through.
+
+   .. py:method:: figure(source, caption="", alt="", label="", width=None, dpi=200) -> Container
+
+      Add a :class:`Figure`.
 
    .. py:method:: image(src, alt="", title="") -> Container
 
@@ -202,16 +213,18 @@ render-agnostic.
    inside the previous ``<li>`` in HTML) and does not consume a number in
    ordered lists.
 
-.. py:class:: Table(headers, rows, caption="", align=None)
+.. py:class:: Table(headers, rows, caption="", align=None, label="")
 
    :param headers: ``Sequence[TextLike]`` — one entry per column.
    :param rows: ``Sequence[Sequence[TextLike]]``.
-   :param str caption: Italic line after the table (Markdown) or
-      ``<caption>`` (HTML).
+   :param str caption: Numbered caption ("Table 1: ..."): an italic line
+      after the table (Markdown), ``<caption>`` (HTML), ``\caption``
+      (LaTeX). Tables without a caption aren't numbered.
    :param align: One of ``"left"``, ``"center"``, ``"right"`` per column;
       default all-left.
-   :raises ValueError: for row-width mismatch, wrong ``align`` length, or
-      an invalid ``align`` value.
+   :param str label: Name for :func:`ref`; requires a caption.
+   :raises ValueError: for row-width mismatch, wrong ``align`` length, an
+      invalid ``align`` value, or an invalid label / label without caption.
 
    Markdown cells escape ``|`` and turn embedded newlines into ``<br>``.
 
@@ -230,18 +243,19 @@ render-agnostic.
    :param str missing: Cell text for ``None``, NaN, and pandas ``NA`` /
       ``NaT``; default ``""``.
    :param str caption: As above.
+   :param str label: As above.
    :raises ValueError: for column names in ``columns``, ``headers`` or
       ``formats`` that don't exist, or a ``headers`` sequence of the wrong
       length.
 
-   .. py:classmethod:: from_records(records, columns=None, *, headers=None, formats=None, align=None, missing="", caption="") -> Table
+   .. py:classmethod:: from_records(records, columns=None, *, headers=None, formats=None, align=None, missing="", caption="", label="") -> Table
 
       Rows from an iterable of mappings. Columns default to the union of
       keys in first-seen order; keys absent from a record are missing.
 
       :raises TypeError: if a record is not a mapping.
 
-   .. py:classmethod:: from_csv(source, columns=None, *, delimiter=",", encoding="utf-8", parse_numbers=True, headers=None, formats=None, align=None, missing="", caption="") -> Table
+   .. py:classmethod:: from_csv(source, columns=None, *, delimiter=",", encoding="utf-8", parse_numbers=True, headers=None, formats=None, align=None, missing="", caption="", label="") -> Table
 
       Rows from a CSV file path or open text file; the first row is the
       header. With ``parse_numbers``, a column whose values all parse as
@@ -251,7 +265,7 @@ render-agnostic.
 
       :raises ValueError: for empty input or a row with too many fields.
 
-   .. py:classmethod:: from_dataframe(df, columns=None, *, index=False, headers=None, formats=None, align=None, missing="", caption="") -> Table
+   .. py:classmethod:: from_dataframe(df, columns=None, *, index=False, headers=None, formats=None, align=None, missing="", caption="", label="") -> Table
 
       Rows from a pandas DataFrame (or any object with ``columns`` and
       ``itertuples()``); pandas is not imported. ``index=True`` prepends the
@@ -259,7 +273,40 @@ render-agnostic.
 
       :raises TypeError: if *df* is not DataFrame-like.
 
+.. py:class:: Figure(source, caption="", alt="", label="", width=None, dpi=200)
+
+   An image with an optional numbered caption ("Figure 1: ...").
+
+   :param source: An image file path (``str`` or :class:`pathlib.Path`;
+      not a URL), image bytes (PNG, JPEG, GIF or SVG, detected from the
+      content), or a plot object with a matplotlib-style ``savefig()``
+      method. matplotlib is never imported.
+   :param str caption: Numbered caption; figures without one aren't
+      numbered.
+   :param str alt: Alternative text; defaults to the caption.
+   :param str label: Name for :func:`ref`; requires a caption.
+   :param width: Fraction (0, 1] of the text width; ``None`` fills the
+      width in PDF and scales down to fit elsewhere.
+   :param int dpi: Resolution for rendering plots to PNG.
+   :raises TypeError: for any other source type.
+   :raises ValueError: for unrecognized bytes, a URL, an invalid width, or
+      an invalid label / label without caption.
+
+   Paths are referenced as-is in Markdown, HTML and LaTeX and embedded in
+   PDF. Plots and bytes are embedded as data URIs in HTML (and in Markdown
+   without an assets folder), written to files for Markdown/LaTeX by
+   ``save_markdown()`` / ``save_latex()`` (plots as vector PDF for LaTeX;
+   SVG can't be used in LaTeX), and embedded in PDF.
+
+   .. py:method:: image_data(plot_format="png") -> tuple[bytes, str]
+
+      The image as ``(bytes, format)``; plots are rendered as
+      *plot_format*.
+
 .. py:class:: Image(src, alt="", title="")
+
+   A plain, unnumbered image; *src* may be a remote URL. In LaTeX the
+   title (or alt text) becomes an unnumbered ``\caption*``.
 
 .. py:class:: HorizontalRule()
 
@@ -345,6 +392,13 @@ Inline spans
    Subscript / superscript. Markdown and HTML ``<sub>`` / ``<sup>``;
    LaTeX ``\textsubscript`` / ``\textsuperscript``.
 
+.. py:function:: ref(label, text="") -> Inline
+
+   A cross-reference to the captioned figure or table with this *label*:
+   "Figure 2" / "Table 1", or *text* if given. A link in HTML, LaTeX
+   (``\hyperref`` + ``\ref*``) and PDF; plain text in Markdown and in PDF
+   table cells. Raises ``ValueError`` at render time for an unknown label.
+
 .. py:function:: footnote(text) -> Inline
 
    A footnote whose note is *text*, numbered in document order and shown
@@ -362,10 +416,13 @@ Each renderer exposes ``render(report)``. :meth:`Report.to_markdown`,
 :meth:`Report.to_html`, :meth:`Report.to_latex`, and :meth:`Report.to_pdf`
 are convenience wrappers around these.
 
-.. py:class:: MarkdownRenderer()
+.. py:class:: MarkdownRenderer(assets_dir=None, assets_url=None)
 
    GitHub-flavored Markdown. Blocks are separated by blank lines; table
-   alignment uses ``:---`` / ``:---:`` / ``---:`` markers.
+   alignment uses ``:---`` / ``:---:`` / ``---:`` markers. Figures made
+   from plots or image bytes are written into *assets_dir* when given and
+   referenced as *assets_url* + file name (default: the directory path);
+   otherwise they are embedded as data URIs.
 
    .. py:method:: render(report) -> str
 
@@ -385,7 +442,7 @@ are convenience wrappers around these.
 
    .. py:method:: render(report) -> str
 
-.. py:class:: LatexRenderer(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False)
+.. py:class:: LatexRenderer(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False, assets_dir=None, assets_url=None)
 
    :param bool full_document: ``True`` produces a complete document
       (preamble, ``\maketitle`` block, body) that compiles with pdfLaTeX,
@@ -397,6 +454,9 @@ are convenience wrappers around these.
       ``reportsmith.renderers.latex.DEFAULT_PREAMBLE``.
    :param bool numbered: Number sections. Unnumbered sections are still
       bookmarked.
+   :param assets_dir: Where figures made from plots or image bytes are
+      written (required if the report has any); referenced as
+      *assets_url* + file name, default the directory path.
 
    All text is LaTeX-escaped (also available as
    ``reportsmith.renderers.latex.escape_latex``). Tables use ``longtable``
@@ -421,8 +481,9 @@ are convenience wrappers around these.
       falls back to core Courier.
 
    Sections become PDF outline bookmarks; links are clickable; missing
-   images render as a ``[Image: alt]`` placeholder; table cells are
-   rendered as plain text; :class:`Raw` content is skipped.
+   images render as a ``[Image: alt]`` placeholder; table cells keep
+   bold, italic, strikethrough and links (code and cross-references become
+   plain text); :class:`Raw` content is skipped.
 
    .. py:method:: render(report) -> bytes
 
@@ -437,6 +498,10 @@ Table row width mismatch                             ``ValueError`` (constructio
 Invalid or mis-sized ``align``                       ``ValueError`` (construction)
 Invalid ``Raw`` format                               ``ValueError`` (construction)
 ``TableOfContents`` depth outside 1–5                ``ValueError`` (construction)
+Invalid figure source, width or label                ``ValueError`` / ``TypeError``
+Label without a caption                              ``ValueError`` (construction)
+Duplicate label, or ``ref()`` to an unknown label    ``ValueError`` (render)
+Figure from plot/bytes in LaTeX without assets dir   ``ValueError`` (render)
 Renderer meets an unknown ``Element`` subclass       ``TypeError`` (render)
 PDF export without ``fpdf2`` installed               ``ImportError`` (render)
 ===================================================  ==============================

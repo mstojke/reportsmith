@@ -7,9 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-19
+
 ### Added
 
-- CI now also tests on Python 3.14.
+- Figures (`figure(source, caption="", alt="", label="", width=None)`,
+  `Figure`) from an image file, image bytes (PNG, JPEG, GIF, SVG), or a
+  matplotlib plot (any object with `savefig()`; matplotlib is not a
+  dependency). HTML embeds generated images as data URIs; `save_markdown()`
+  and `save_latex()` write them to a `<name>_files/` folder (plots as
+  vector PDF for LaTeX); `to_markdown()` / `to_latex()` take `assets_dir`.
+- Numbered captions: captioned figures and tables are numbered "Figure 1",
+  "Table 1", ... in document order, in every format.
+- Cross-references: `label=` on figures and tables, and `ref(label, text="")`
+  inline, rendered as "Table 1" (or custom text) — a link in HTML, LaTeX and
+  PDF. Duplicate or unknown labels raise `ValueError`.
+- CI now also tests on Python 3.14, and the LaTeX job also compiles the
+  figures example.
 - Coverage badge in the README. On each push to `main`, CI measures
   coverage and commits a shields.io endpoint file to a separate `badges`
   branch, so no third-party coverage service or secret is needed.
@@ -23,6 +37,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of warning).
 - The Python version test matrix runs on `ubuntu-24.04` instead of
   `ubuntu-latest`, because there is no Python 3.9 build for Ubuntu 26.04.
+- Table captions now carry their number ("Table 1: Sales") in Markdown,
+  HTML and PDF, matching LaTeX, which already numbered them.
+- In LaTeX, a plain `image()` caption is now unnumbered (`\caption*`), so
+  only `figure()` captions take figure numbers. The preamble loads the
+  `caption` package.
+- The `dev` extra now includes matplotlib.
+
+### Fixed
+
+- PDF table cells keep bold, italic, strikethrough and clickable links
+  instead of flattening everything to plain text. Text that looks like
+  markup (`**`, `__`, `~~`, `--`) is still shown literally.
+- PDF export with fpdf2 older than 2.8.6 (the newest available on
+  Python 3.9): a link inside a table cell no longer crashes with
+  `AttributeError: 'tuple' object has no attribute 'serialize'`, and
+  backslashes in table cells and captions are no longer printed doubled.
+  fpdf2 changed its markdown escaping in 2.8.6; both behaviours are now
+  handled.
 
 ## [0.4.0] - 2026-10-18
 
