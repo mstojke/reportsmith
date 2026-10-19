@@ -68,6 +68,21 @@ _SUBSCRIPT = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
 _CELL_MARKERS = {"bold": "**", "italic": "__", "strike": "~~"}
 # Link text fpdf2's markdown link pattern accepts: no brackets.
 _LINKABLE = re.compile(r"[^\[\]]+")
+# A run of backslashes followed by a markdown marker, or any other run.
+_MD_ESCAPE_RE = re.compile(r"(\\*)(\*\*|__|~~|--)|(\\+)")
+
+
+def _fpdf_halves_backslashes() -> bool:
+    """Whether fpdf2 treats backslashes outside markers as escapes (2.8.6+)."""
+    try:
+        from fpdf import FPDF_VERSION
+    except ImportError:  # fpdf2 not installed: the PDF renderer can't run anyway
+        return True
+    version = tuple(int(part) for part in re.findall(r"\d+", FPDF_VERSION)[:3])
+    return version >= (2, 8, 6)
+
+
+_FPDF_HALVES_BACKSLASHES = _fpdf_halves_backslashes()
 
 _WIN_FONTS = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
 _MAC_FONTS = "/System/Library/Fonts/Supplemental"
@@ -155,7 +170,11 @@ class PdfRenderer:
         # subsetting system fonts (e.g. Arial's MERG table); silence it.
         logging.getLogger("fontTools.subset").setLevel(logging.ERROR)
         # Links in table cells (rendered from markdown) match body links.
-        pdf.MARKDOWN_LINK_COLOR = _ACCENT
+        # fpdf2 < 2.8.6 needs a colour object here, not an (r, g, b) tuple;
+        # set_text_color() builds one portably.
+        pdf.set_text_color(*_ACCENT)
+        pdf.MARKDOWN_LINK_COLOR = pdf.text_color
+        pdf.set_text_color(*_TEXT)
         body = _find_fonts(_BODY_FONT_CANDIDATES, self._fonts)
         if body:
             for style, path in zip(("", "B", "I", "BI"), body):
@@ -427,10 +446,21 @@ class PdfRenderer:
 
     @staticmethod
     def _md_escape(text: str) -> str:
-        # Escape fpdf2's markdown markers so caption text is shown literally.
-        for marker in ("\\", "**", "__", "~~", "--"):
-            text = text.replace(marker, "\\" + marker)
-        return text
+        """Escape text for fpdf2's markdown so it is shown literally.
+
+        k backslashes before a marker become 2k+1 (k literal backslashes and
+        a literal marker) in every fpdf2 version. Backslashes elsewhere are
+        halved by fpdf2 >= 2.8.6 but kept as-is by older versions, so they
+        are only doubled for the newer ones.
+        """
+
+        def replace(match: "re.Match[str]") -> str:
+            backslashes, marker, other = match.groups()
+            if marker:
+                return "\\" * (2 * len(backslashes) + 1) + marker
+            return other * 2 if _FPDF_HALVES_BACKSLASHES else other
+
+        return _MD_ESCAPE_RE.sub(replace, text)
 
     def _table(self, pdf, el: Table) -> None:
         self._mark_target(pdf, el)

@@ -164,6 +164,16 @@ class TestTableCellFormatting:
         assert literal in text
         assert set(self.font_of(runs, "**b**")) == {"/Helvetica"}
 
+    # fpdf2 changed how backslashes are escaped in 2.8.6; these must come
+    # out unchanged on both old and new versions.
+    @pytest.mark.parametrize(
+        "literal",
+        ["one\\slash", "two\\\\slashes", "esc\\**star**", "end\\", "\\--dash", "__\\__"],
+    )
+    def test_backslashes_are_literal(self, literal):
+        text, _, _ = self.render(["A"], [[["x ", literal, " ", bold("y")]]])
+        assert f"x {literal} y" in text
+
     def test_code_is_plain_text(self):
         text, _, _ = self.render(["A"], [[["run ", code("make --fast")]]])
         assert "run make --fast" in text

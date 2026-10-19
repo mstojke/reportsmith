@@ -49,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PDF table cells keep bold, italic, strikethrough and clickable links
   instead of flattening everything to plain text. Text that looks like
   markup (`**`, `__`, `~~`, `--`) is still shown literally.
+- PDF export with fpdf2 older than 2.8.6 (the newest available on
+  Python 3.9): a link inside a table cell no longer crashes with
+  `AttributeError: 'tuple' object has no attribute 'serialize'`, and
+  backslashes in table cells and captions are no longer printed doubled.
+  fpdf2 changed its markdown escaping in 2.8.6; both behaviours are now
+  handled.
 
 ## [0.4.0] - 2026-10-18
 
