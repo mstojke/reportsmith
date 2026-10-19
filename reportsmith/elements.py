@@ -8,6 +8,8 @@ with the same methods.
 
 from __future__ import annotations
 
+import io
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any, Iterable, Optional, Sequence, Union
@@ -66,6 +68,7 @@ class Table(Element):
         rows: Sequence[Sequence[TextLike]],
         caption: str = "",
         align: Optional[Sequence[str]] = None,
+        label: str = "",
     ):
         self.headers = [normalize(h) for h in headers]
         self.rows = [[normalize(cell) for cell in row] for row in rows]
@@ -76,6 +79,7 @@ class Table(Element):
                     f"Row {i} has {len(row)} cells, expected {width}"
                 )
         self.caption = caption
+        self.label = _check_label(label, caption)
         if align is not None:
             if len(align) != width:
                 raise ValueError("align must have one entry per column")
@@ -103,13 +107,14 @@ class Table(Element):
         align: Optional[Sequence[str]] = None,
         missing: str = "",
         caption: str = "",
+        label: str = "",
     ) -> "Table":
         """Build a table from a sequence of dicts (keys become headers)."""
         from .data import from_records
 
         return from_records(
             records, columns, headers=headers, formats=formats,
-            align=align, missing=missing, caption=caption,
+            align=align, missing=missing, caption=caption, label=label,
         )
 
     @classmethod
@@ -126,6 +131,7 @@ class Table(Element):
         align: Optional[Sequence[str]] = None,
         missing: str = "",
         caption: str = "",
+        label: str = "",
     ) -> "Table":
         """Build a table from a CSV file path or open text file.
 
@@ -138,7 +144,7 @@ class Table(Element):
         return from_csv(
             source, columns, delimiter=delimiter, encoding=encoding,
             parse_numbers=parse_numbers, headers=headers, formats=formats,
-            align=align, missing=missing, caption=caption,
+            align=align, missing=missing, caption=caption, label=label,
         )
 
     @classmethod
@@ -153,6 +159,7 @@ class Table(Element):
         align: Optional[Sequence[str]] = None,
         missing: str = "",
         caption: str = "",
+        label: str = "",
     ) -> "Table":
         """Build a table from a pandas DataFrame (pandas is not required by
         reportsmith itself). ``index=True`` adds the index as the first column."""
@@ -160,7 +167,7 @@ class Table(Element):
 
         return from_dataframe(
             df, columns, index=index, headers=headers, formats=formats,
-            align=align, missing=missing, caption=caption,
+            align=align, missing=missing, caption=caption, label=label,
         )
 
 
@@ -169,6 +176,93 @@ class Image(Element):
         self.src = src
         self.alt = alt
         self.title = title
+
+
+_LABEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]*")
+
+
+def _check_label(label: str, caption: str) -> str:
+    if not label:
+        return ""
+    if not _LABEL_RE.fullmatch(label):
+        raise ValueError(
+            f"Invalid label {label!r}: use letters, digits, '_', '.', ':' or '-', "
+            "starting with a letter or digit"
+        )
+    if not caption:
+        raise ValueError(f"Label {label!r} needs a caption: only captioned items are numbered")
+    return label
+
+
+def _sniff_image(data: bytes) -> str:
+    head = data[:512].lstrip()
+    if head.startswith(b"\x89PNG"):
+        return "png"
+    if head.startswith(b"\xff\xd8"):
+        return "jpeg"
+    if head.startswith(b"GIF8"):
+        return "gif"
+    if head.startswith(b"<svg") or (head.startswith(b"<?xml") and b"<svg" in data[:2048]):
+        return "svg"
+    raise ValueError("Unrecognized image data: expected PNG, JPEG, GIF or SVG bytes")
+
+
+class Figure(Element):
+    """An image with an optional numbered caption.
+
+    ``source`` is an image file path, image bytes (PNG, JPEG, GIF or SVG),
+    or a plot object with a matplotlib-style ``savefig()`` method (matplotlib
+    itself is never imported). Captioned figures are numbered "Figure 1",
+    "Figure 2", ... in document order; ``label`` lets :func:`~reportsmith.ref`
+    refer to one. ``width`` is a fraction (0-1] of the text width.
+    """
+
+    def __init__(
+        self,
+        source: Union[str, Path, bytes, Any],
+        caption: str = "",
+        alt: str = "",
+        label: str = "",
+        width: Optional[float] = None,
+        dpi: int = 200,
+    ):
+        if isinstance(source, (str, Path)):
+            path = str(source)
+            if path.startswith(("http://", "https://")):
+                raise ValueError("Figures need a local file; use image() for remote images")
+            self.kind = "path"
+            self.format = Path(path).suffix.lower().lstrip(".").replace("jpg", "jpeg")
+        elif isinstance(source, (bytes, bytearray)):
+            self.kind = "bytes"
+            self.format = _sniff_image(bytes(source))
+            source = bytes(source)
+        elif callable(getattr(source, "savefig", None)):
+            self.kind = "plot"
+            self.format = ""  # chosen per output format
+        else:
+            raise TypeError(
+                "Figure source must be a path, image bytes, or an object with savefig(), "
+                f"got {type(source).__name__}"
+            )
+        if width is not None and not 0 < width <= 1:
+            raise ValueError(f"width must be a fraction in (0, 1], got {width}")
+        # A path, bytes or plot object, as told by ``kind``.
+        self.source: Any = source
+        self.caption = caption
+        self.alt = alt or caption
+        self.label = _check_label(label, caption)
+        self.width = width
+        self.dpi = dpi
+
+    def image_data(self, plot_format: str = "png") -> tuple[bytes, str]:
+        """The image as ``(bytes, format)``; plots are rendered as ``plot_format``."""
+        if self.kind == "path":
+            return Path(self.source).read_bytes(), self.format
+        if self.kind == "bytes":
+            return self.source, self.format
+        buffer = io.BytesIO()
+        self.source.savefig(buffer, format=plot_format, dpi=self.dpi, bbox_inches="tight")
+        return buffer.getvalue(), plot_format
 
 
 class HorizontalRule(Element):
@@ -256,8 +350,9 @@ class Container(Element):
         rows: Sequence[Sequence[TextLike]],
         caption: str = "",
         align: Optional[Sequence[str]] = None,
+        label: str = "",
     ) -> "Container":
-        self.children.append(Table(headers, rows, caption, align))
+        self.children.append(Table(headers, rows, caption, align, label))
         return self
 
     def table_from_records(
@@ -285,6 +380,19 @@ class Container(Element):
     ) -> "Container":
         """Add a table built from a DataFrame; see :meth:`Table.from_dataframe`."""
         self.children.append(Table.from_dataframe(df, columns, **options))
+        return self
+
+    def figure(
+        self,
+        source: Union[str, Path, bytes, Any],
+        caption: str = "",
+        alt: str = "",
+        label: str = "",
+        width: Optional[float] = None,
+        dpi: int = 200,
+    ) -> "Container":
+        """Add a :class:`Figure` (an image file, image bytes or a plot)."""
+        self.children.append(Figure(source, caption, alt, label, width, dpi))
         return self
 
     def image(self, src: str, alt: str = "", title: str = "") -> "Container":

@@ -66,6 +66,7 @@ def build_table(
     align: Optional[Sequence[str]] = None,
     missing: str = "",
     caption: str = "",
+    label: str = "",
 ) -> "Table":
     """Shared core: select columns, format values and build a :class:`Table`."""
     from .elements import Table
@@ -106,7 +107,7 @@ def build_table(
         ]
         for row in rows
     ]
-    return Table(labels, cells, caption=caption, align=align)
+    return Table(labels, cells, caption=caption, align=align, label=label)
 
 
 def from_records(

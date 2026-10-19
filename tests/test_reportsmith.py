@@ -45,7 +45,7 @@ class TestMarkdown:
         assert "| Name | Value |" in md
         assert "| :--- | ---: |" in md
         assert "pipe\\|here" in md
-        assert "*My caption*" in md
+        assert "*Table 1: My caption*" in md
 
     def test_lists(self):
         r = make_report()
@@ -109,7 +109,7 @@ class TestHtml:
         html = r.to_html()
         assert '<th style="text-align:center">H1</th>' in html
         assert '<td style="text-align:right">b</td>' in html
-        assert "<caption>Cap</caption>" in html
+        assert '<caption><span class="caption-label">Table 1:</span> Cap</caption>' in html
 
     def test_nested_list_markup(self):
         r = make_report()

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from html import escape
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional, Union
 
 from ..elements import (
     Callout,
     CodeBlock,
     Element,
+    Figure,
     Heading,
     HorizontalRule,
     Image,
@@ -20,7 +22,9 @@ from ..elements import (
     Table,
     TableOfContents,
 )
+from ..assets import Assets, data_uri, path_reference
 from ..inline import Inline, InlineContent
+from ..numbering import Numbering
 from ..toc import TocEntry, build_tree, collect_entries, heading_anchors, plain_text
 
 if TYPE_CHECKING:
@@ -30,10 +34,25 @@ _ALIGN_MARKERS = {"left": ":---", "center": ":---:", "right": "---:"}
 
 
 class MarkdownRenderer:
-    """Renders a Report to GitHub-flavored Markdown."""
+    """Renders a Report to GitHub-flavored Markdown.
+
+    Figures generated from plots or bytes are written as image files into
+    ``assets_dir`` when given (referenced as ``assets_url`` + file name,
+    default the directory path); otherwise they are embedded as data URIs.
+    """
+
+    def __init__(
+        self,
+        assets_dir: Optional[Union[str, Path]] = None,
+        assets_url: Optional[str] = None,
+    ):
+        self.assets_dir = assets_dir
+        self.assets_url = assets_url
 
     def render(self, report: "Report") -> str:
         self._report = report
+        self._numbering = Numbering(report)
+        self._assets = Assets(self.assets_dir, self.assets_url) if self.assets_dir is not None else None
         self._anchors = heading_anchors(report)
         self._footnotes: list[str] = []
         blocks: list[str] = [f"# {report.title}"]
@@ -85,6 +104,8 @@ class MarkdownRenderer:
             return ["\n".join(self._list_lines(el, indent=0))]
         if isinstance(el, Table):
             return [self._table(el)]
+        if isinstance(el, Figure):
+            return [self._figure(el)]
         if isinstance(el, Image):
             title = f' "{el.title}"' if el.title else ""
             return [f"![{el.alt}]({el.src}{title})"]
@@ -128,6 +149,17 @@ class MarkdownRenderer:
             blocks.append("\n".join(lines))
         return blocks
 
+    def _figure(self, el: Figure) -> str:
+        if el.kind == "path":
+            url = path_reference(el.source)
+        else:
+            data, fmt = el.image_data("png")
+            url = self._assets.write(data, fmt) if self._assets else data_uri(data, fmt)
+        block = f"![{el.alt}]({url})"
+        if el.caption:
+            block += f"\n\n*{self._numbering.caption_label(el)}: {el.caption}*"
+        return block
+
     def _list_lines(self, el: ListElement, indent: int) -> list[str]:
         lines: list[str] = []
         pad = "  " * indent
@@ -152,7 +184,7 @@ class MarkdownRenderer:
             lines.append("| " + " | ".join(cell(c) for c in row) + " |")
         table = "\n".join(lines)
         if el.caption:
-            table += f"\n\n*{el.caption}*"
+            table += f"\n\n*{self._numbering.caption_label(el)}: {el.caption}*"
         return table
 
     # -- inline ----------------------------------------------------------
@@ -180,6 +212,8 @@ class MarkdownRenderer:
         if span.style in ("sub", "sup"):
             # No Markdown syntax; GitHub and most renderers accept the tags.
             return f"<{span.style}>{escape(span.text, quote=False)}</{span.style}>"
+        if span.style == "ref":
+            return self._numbering.ref_text(span.href, span.text)
         if span.style == "footnote":
             self._footnotes.append(span.text)
             return f"[^{len(self._footnotes)}]"

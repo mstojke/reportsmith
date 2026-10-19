@@ -12,14 +12,15 @@ This guide walks through every feature. For a terse signature-level listing, see
 4. [Tables](#tables) — including [tables from data](#tables-from-data)
 5. [Lists](#lists)
 6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules)
-7. [Callouts](#callouts)
-8. [Table of contents](#table-of-contents)
-9. [Raw passthrough content](#raw-passthrough-content)
-10. [Exporting](#exporting)
-11. [Exporting to LaTeX](#exporting-to-latex)
-12. [Exporting to PDF](#exporting-to-pdf)
-13. [Customizing the HTML output](#customizing-the-html-output)
-14. [Escaping and safety](#escaping-and-safety)
+7. [Figures](#figures) — including [numbering and cross-references](#numbering-and-cross-references)
+8. [Callouts](#callouts)
+9. [Table of contents](#table-of-contents)
+10. [Raw passthrough content](#raw-passthrough-content)
+11. [Exporting](#exporting)
+12. [Exporting to LaTeX](#exporting-to-latex)
+13. [Exporting to PDF](#exporting-to-pdf)
+14. [Customizing the HTML output](#customizing-the-html-output)
+15. [Escaping and safety](#escaping-and-safety)
 
 ---
 
@@ -130,8 +131,9 @@ s.table(
         ["EMEA", "$1.2M", "+8%"],
         ["APAC", "$0.9M", "-2%"],
     ],
-    caption="Revenue by region",              # optional
+    caption="Revenue by region",              # optional; numbered "Table 1: ..."
     align=["left", "right", "right"],         # optional; per-column
+    label="revenue",                          # optional; for ref("revenue")
 )
 ```
 
@@ -139,6 +141,7 @@ s.table(
 - Every row must have the same number of cells as `headers` — a mismatch raises `ValueError` at construction time, not at render time.
 - Cells accept inline formatting like any other text: `[["EMEA", bold("$1.2M")]]`.
 - In Markdown, pipes in cell text are escaped and newlines inside a cell become `<br>` so the table stays valid.
+- A captioned table is numbered — "Table 1: Revenue by region" — in every format; see [numbering and cross-references](#numbering-and-cross-references).
 
 ### Tables from data
 
@@ -168,7 +171,7 @@ All three accept the same options:
 | `formats={"revenue": "${:,.0f}", "growth": "{:+.1%}"}` | Per-column formats, applied to every value in that column; callables may return inline content, e.g. `{"region": bold}`. |
 | `missing="—"` | Text for `None`, NaN, and pandas `NA`/`NaT` (default: empty cell). |
 | `align=None` | Default: numeric columns are right-aligned, others left. Pass a list to override. |
-| `caption="..."` | Caption, as for `table()`. |
+| `caption="..."`, `label="..."` | Caption and cross-reference label, as for `table()`. |
 
 Values without a format are rendered with `str()`. Booleans count as text, not numbers.
 
@@ -210,6 +213,53 @@ s.horizontal_rule()
 
 - `language` becomes the fence info string in Markdown and a `language-*` class in HTML (ready for highlight.js/Prism if you add one via custom CSS/raw HTML).
 - If the code itself contains ` ``` `, the Markdown fence automatically widens so the block stays intact.
+
+## Figures
+
+`figure(source, caption="", alt="", label="", width=None)` adds an image with an optional numbered caption. `source` can be:
+
+- **an image file path** — referenced as-is in Markdown, HTML and LaTeX, embedded in PDF;
+- **image bytes** — PNG, JPEG, GIF or SVG, detected from the content;
+- **a plot** — a matplotlib figure, or any object with a matplotlib-style `savefig()` method (reportsmith never imports matplotlib itself).
+
+```python
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(6, 3))
+ax.plot(months, revenue)
+
+s.figure(fig, caption="Monthly revenue", label="revenue-chart", width=0.8)
+s.figure("diagram.png", caption="System overview")
+s.figure(png_bytes, alt="Logo", width=0.2)          # no caption: not numbered
+```
+
+`width` is a fraction of the text width (`0.5` = half); by default figures fill the width in PDF and are scaled down to fit elsewhere. `alt` defaults to the caption. `dpi=200` sets the resolution plots are rendered at.
+
+Where generated images (plots and bytes) go depends on the format:
+
+| Format | Generated images |
+| --- | --- |
+| HTML | Embedded as data URIs, so the page stays a single self-contained file. Plots are PNG. |
+| Markdown | `save_markdown("report.md")` writes them to a `report_files/` folder next to the file and links them relatively. `to_markdown()` embeds them as data URIs, or writes them to `assets_dir=` if you pass one. |
+| LaTeX | `save_latex("report.tex")` writes them to `report_files/`; plots are saved as vector PDF. `to_latex()` needs `assets_dir=` for them, and raises `ValueError` without it. SVG bytes can't be used (LaTeX can't include SVG). |
+| PDF | Embedded directly. A missing file renders a `[Figure: ...]` placeholder. |
+
+`image(src, alt, title)` still exists for simple unnumbered images, including remote `http(s)://` images, which figures don't accept.
+
+### Numbering and cross-references
+
+Figures and tables **with a caption** are numbered separately, in document order — "Figure 1", "Figure 2", "Table 1" — in every format; items without a caption aren't numbered. Give an item a `label` and refer to it from any text with `ref()`:
+
+```python
+from reportsmith import ref
+
+s.paragraph(["Revenue grew 21% (", ref("revenue"), "); ", ref("revenue-chart", "the chart"), " shows the trend."])
+s.table(headers, rows, caption="Revenue by region", label="revenue")
+```
+
+`ref("revenue")` renders as "Table 1" — a link in HTML, LaTeX and PDF, plain text in Markdown — and `ref(label, "custom text")` uses your wording instead. References may come before or after their target. Labels use letters, digits, `_`, `.`, `:` and `-`; a label needs a caption (only numbered items can be referred to), a duplicate label raises `ValueError`, and so does `ref()` to a label that doesn't exist.
+
+In LaTeX, numbers come from LaTeX itself (`\caption`, `\label`, `\ref`), and plain `image()` captions are unnumbered (`\caption*`), so they match the other formats.
 
 ## Callouts
 
@@ -286,6 +336,8 @@ report.save_markdown("report.md")     # writes UTF-8, returns the Path
 report.save_html("report.html")
 ```
 
+Generated figure images are embedded in HTML; `save_markdown()` writes them into a `report_files/` folder next to the file (see [Figures](#figures)).
+
 `to_html()` / `save_html()` options:
 
 - `full_document=False` returns only the body markup (`<h1>…` onward, no `<html>`, `<head>`, or CSS) — useful for embedding the report into an existing page or template.
@@ -321,11 +373,12 @@ Options (on `to_latex()`, `save_latex()`, and `LatexRenderer`):
 - `document_class="report"` / `class_options="12pt,letterpaper"` change the `\documentclass` line.
 - `preamble="..."` is appended after the built-in preamble, e.g. `preamble="\\usepackage{amsmath}"` or `\\renewcommand` tweaks.
 - `numbered=True` numbers sections; by default they are unnumbered (but still bookmarked).
+- `assets_dir=...` (on `to_latex()` and `LatexRenderer`): where to write figures made from plots or image bytes. `save_latex()` uses a `<name>_files/` folder automatically.
 
 Details and limitations:
 
 - **Section depth** maps to `\section`, `\subsection`, `\subsubsection`, `\paragraph`, `\subparagraph`.
-- **Images** are embedded with `\includegraphics` in a figure (the title, or else the alt text, becomes the caption) and scaled down to the text width if needed. Paths are resolved relative to where you compile, and a missing file is a compile error. `http(s)://` images can't be embedded, so they render as a link instead.
+- **Images** are embedded with `\includegraphics` in a figure (the title, or else the alt text, becomes an unnumbered caption) and scaled down to the text width if needed. Paths are resolved relative to where you compile, and a missing file is a compile error. `http(s)://` images can't be embedded, so they render as a link instead.
 - **Lists** nest at most four levels deep (a LaTeX limit). Empty lists are omitted.
 - **Multi-line table cells** are rendered as stacked lines within the cell.
 
@@ -355,8 +408,8 @@ Details and limitations:
   ))
   ```
 
-- **Table cells** render inline spans as plain text (no bold/links inside PDF table cells).
-- **Missing images** render as a `[Image: alt]` placeholder instead of failing the export.
+- **Table cells** keep bold, italic, strikethrough and clickable links. Code spans and cross-references show as plain text there (cells can't switch fonts or hold internal links), and digit sub/superscripts use Unicode characters such as m² when the font has them.
+- **Missing images** render as an `[Image: alt]` (or `[Figure: ...]`) placeholder instead of failing the export.
 - **`raw(...)` content is skipped** — Markdown/HTML/LaTeX passthrough has no meaning in PDF.
 - Without fpdf2 installed, `to_pdf()` raises `ImportError` with the install hint; the rest of the library is unaffected.
 
@@ -391,5 +444,8 @@ Invalid input fails fast with `ValueError` at construction time:
 - table row width not matching the header count
 - unknown `align` value or wrong `align` length
 - unknown `raw` format
+- figure source that isn't a path, image bytes or plot; invalid `width`; invalid label, or a label without a caption
+
+Duplicate labels and `ref()` to an unknown label raise `ValueError` when the report is rendered.
 
 Rendering an element type the renderer doesn't know raises `TypeError` (relevant only if you define custom `Element` subclasses).

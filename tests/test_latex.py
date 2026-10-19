@@ -167,10 +167,10 @@ class TestElements:
     def test_image_with_title_caption(self):
         tex = fragment(lambda r: r.image("img/chart.png", alt="Alt", title="Q3_rev"))
         assert "\\includegraphics{img/chart.png}" in tex
-        assert "\\caption{Q3\\_rev}" in tex
+        assert "\\caption*{Q3\\_rev}" in tex
 
     def test_image_alt_as_caption_and_none(self):
-        assert "\\caption{Alt}" in fragment(lambda r: r.image("a.png", alt="Alt"))
+        assert "\\caption*{Alt}" in fragment(lambda r: r.image("a.png", alt="Alt"))
         assert "\\caption" not in fragment(lambda r: r.image("a.png"))
 
     def test_remote_image_becomes_link(self):

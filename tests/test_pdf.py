@@ -113,3 +113,62 @@ class TestMissingDependency:
         monkeypatch.setitem(sys.modules, "fpdf", None)  # forces ImportError
         with pytest.raises(ImportError, match=r"pip install reportsmith\[pdf\]"):
             Report("T", date="").to_pdf()
+
+
+class TestTableCellFormatting:
+    """Inline styles inside table cells (rendered via fpdf2's markdown).
+
+    Uses the core Helvetica fonts so font names are the same everywhere."""
+
+    def render(self, headers, rows):
+        pypdf = pytest.importorskip("pypdf")
+        import io
+
+        r = Report("T", date="")
+        r.table(headers, rows)
+        page = pypdf.PdfReader(io.BytesIO(r.to_pdf(fonts=()))).pages[0]
+        runs = []
+
+        def visit(text, cm, tm, font_dict, font_size):
+            if text.strip() and font_dict:
+                runs.append((text.strip(), str(font_dict.get("/BaseFont"))))
+
+        text = page.extract_text(visitor_text=visit)
+        uris = [a.get_object().get("/A", {}).get("/URI") for a in page.get("/Annots", [])]
+        return text, runs, uris
+
+    @staticmethod
+    def font_of(runs, needle):
+        return [font for text, font in runs if needle in text]
+
+    def test_styles(self):
+        _, runs, _ = self.render(
+            ["A"], [[["plain ", bold("bolded"), " ", italic("slanted")]]]
+        )
+        assert self.font_of(runs, "bolded") == ["/Helvetica-Bold"]
+        assert self.font_of(runs, "slanted") == ["/Helvetica-Oblique"]
+        assert "/Helvetica" in self.font_of(runs, "plain")
+
+    def test_links_are_clickable(self):
+        text, _, uris = self.render(["A"], [[["see ", link("docs", "https://example.com/d")]]])
+        assert "see docs" in text
+        assert uris == ["https://example.com/d"]
+
+    def test_unlinkable_link_text_falls_back_to_plain(self):
+        text, _, uris = self.render(["A"], [[[link("[x]", "https://example.com")]]])
+        assert "[x]" in text and uris == []
+
+    def test_markers_in_text_are_literal(self):
+        literal = "a **b** c __d__ e ~~f~~ g--h back\\slash"
+        text, runs, _ = self.render(["A"], [[literal]])
+        assert literal in text
+        assert set(self.font_of(runs, "**b**")) == {"/Helvetica"}
+
+    def test_code_is_plain_text(self):
+        text, _, _ = self.render(["A"], [[["run ", code("make --fast")]]])
+        assert "run make --fast" in text
+
+    def test_bold_in_header_stays_bold(self):
+        _, runs, _ = self.render([["Plain ", bold("Strong")]], [["x"]])
+        assert self.font_of(runs, "Strong") == ["/Helvetica-Bold"]
+        assert self.font_of(runs, "Plain") == ["/Helvetica-Bold"]

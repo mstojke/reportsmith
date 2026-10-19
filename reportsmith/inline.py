@@ -19,7 +19,8 @@ TextLike = Union[str, "Inline", Sequence[InlineContent]]
 @dataclass(frozen=True)
 class Inline:
     """A span of text with a style: 'bold', 'italic', 'code', 'link',
-    'strike', 'sub', 'sup' or 'footnote' (whose text is the note itself)."""
+    'strike', 'sub', 'sup', 'footnote' (whose text is the note itself) or
+    'ref' (whose href is the label it refers to)."""
 
     style: str
     text: str
@@ -65,6 +66,15 @@ def footnote(text: str) -> Inline:
     """A footnote: renders as a numbered marker where it is placed, with
     ``text`` shown as the note (numbered in document order)."""
     return Inline("footnote", text)
+
+
+def ref(label: str, text: str = "") -> Inline:
+    """A cross-reference to the figure or table with this ``label``.
+
+    Renders as "Figure 2" / "Table 1" (linked where the format allows), or
+    as ``text`` if given.
+    """
+    return Inline("ref", text, label)
 
 
 def normalize(content: TextLike) -> list[InlineContent]:
