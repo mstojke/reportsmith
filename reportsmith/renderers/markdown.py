@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from html import escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Union
@@ -48,9 +49,11 @@ class MarkdownRenderer:
         self,
         assets_dir: Optional[Union[str, Path]] = None,
         assets_url: Optional[str] = None,
+        front_matter: bool = False,
     ):
         self.assets_dir = assets_dir
         self.assets_url = assets_url
+        self.front_matter = front_matter
 
     def render(self, report: "Report") -> str:
         self._report = report
@@ -58,7 +61,8 @@ class MarkdownRenderer:
         self._assets = Assets(self.assets_dir, self.assets_url) if self.assets_dir is not None else None
         self._anchors = heading_anchors(report)
         self._footnotes: list[str] = []
-        blocks: list[str] = [f"# {report.title}"]
+        blocks: list[str] = [self._front_matter(report)] if self.front_matter else []
+        blocks.append(f"# {report.title}")
         meta = self._metadata_lines(report)
         if meta:
             blocks.append("\n".join(meta))
@@ -71,6 +75,21 @@ class MarkdownRenderer:
                 for n, text in enumerate(self._footnotes, start=1)
             ))
         return "\n\n".join(blocks) + "\n"
+
+    @staticmethod
+    def _front_matter(report: "Report") -> str:
+        # JSON strings and lists are valid YAML, and handle all quoting.
+        fields = [
+            ("title", report.title),
+            ("subtitle", report.subtitle),
+            ("author", report.author),
+            ("date", report.date),
+            ("description", report.description),
+            ("keywords", report.keywords),
+            ("lang", report.language),
+        ]
+        lines = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in fields if value]
+        return "---\n" + "\n".join(lines) + "\n---"
 
     def _metadata_lines(self, report: "Report") -> list[str]:
         lines = []

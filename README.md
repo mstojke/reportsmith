@@ -15,7 +15,10 @@ A small, dependency-free Python library for building reports programmatically an
 - Figures from image files, image bytes, or matplotlib plots, with numbered captions ("Figure 1", "Table 2") and `ref()` cross-references
 - Callouts (note, tip, important, warning, caution): GitHub alerts in Markdown, coloured boxes in HTML, LaTeX and PDF
 - Correct escaping everywhere: HTML entities, Markdown table pipes, code fences that widen when the source contains ` ``` `
-- HTML export ships with a clean embedded stylesheet (light/dark aware) that you can replace with your own CSS
+- HTML export ships with a clean embedded stylesheet — automatic, light, or dark theme, plus a print stylesheet — that you can extend or replace with your own CSS
+- Optional syntax highlighting of code blocks in HTML, LaTeX, and PDF (`pip install reportsmith[highlight]`, via Pygments)
+- Document metadata (author, description, keywords, language) in HTML `<meta>` tags, PDF properties, LaTeX PDF fields, and optional Markdown front matter
+- Reusable content: build sections on their own and `add()` them anywhere, or `extend()` one report with another — heading levels adapt, and `label_prefix` keeps cross-references working
 - LaTeX export: a compilable document (pdfLaTeX/XeLaTeX/LuaLaTeX) with booktabs tables, framed code blocks, hyperlinks, and PDF bookmarks — or a body fragment to `\input` into your own document
 - Optional PDF export (`pip install reportsmith[pdf]`, via fpdf2): matching styling, PDF bookmarks from sections, clickable links, auto-detected Unicode system fonts
 - No required dependencies; Python 3.9+
@@ -105,22 +108,24 @@ Builder methods (all chainable, also available on sections):
 | `raw(content, format="both")` | Verbatim content for `"markdown"`, `"html"`, `"latex"`, or `"both"` (Markdown + HTML) |
 | `toc(title="Contents", depth=3)` | Table of contents for the whole report; `depth` 1–5 sets how many heading levels are listed |
 | `callout(kind="note", content=None, title="")` | Callout box (`"note"`, `"tip"`, `"important"`, `"warning"`, `"caution"`); returns the callout, usable as a context manager |
-| `add(element)` | Any pre-built element |
+| `add(element)` | Any pre-built element; a standalone `Section` or `Callout` is re-levelled to fit |
+| `extend(source, label_prefix="")` | Copies of another report's / section's content (or a list of elements), re-levelled; `label_prefix` renames labels and their `ref()`s |
 
 Anywhere text is accepted you may pass a plain string or a list mixing strings with `bold()`, `italic()`, `code()`, and `link(text, href)` spans.
 
 ### Export
 
-- `report.to_markdown()` → GitHub-flavored Markdown string
-- `report.to_html(full_document=True, css=None)` → HTML string; `full_document=False` returns just the body fragment, `css=` replaces the default stylesheet
+- `report.to_markdown(front_matter=False)` → GitHub-flavored Markdown string; `front_matter=True` adds a YAML metadata block
+- `report.to_html(full_document=True, css=None, theme="auto", highlight=False)` → HTML string; `full_document=False` returns just the body fragment, `css=` replaces the default stylesheet, `theme=` is `"auto"`, `"light"`, or `"dark"`
 - `report.to_latex(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False)` → LaTeX source; `full_document=False` returns just the body, `preamble=` is appended to the built-in preamble
-- `report.to_pdf(fonts=None, mono_fonts=None)` → PDF bytes (requires the `pdf` extra); pass TTF path quadruples to control typefaces
+- `report.to_pdf(fonts=None, mono_fonts=None, highlight=False)` → PDF bytes (requires the `pdf` extra); pass TTF path quadruples to control typefaces
+- `highlight=True` on the HTML, LaTeX, and PDF exports colours code blocks (requires the `highlight` extra)
 - `report.save_markdown(path)` / `report.save_html(path, ...)` / `report.save_latex(path, ...)` / `report.save_pdf(path, ...)` → write to a file, return the `Path`
 - `report.save(path, **options)` → the same, with the format chosen by the extension (`.md`, `.html`, `.tex`, `.pdf`)
 
 ## Running tests
 
-Install the development dependencies (pytest, coverage, the optional fpdf2, pandas and matplotlib integrations, pypdf for checking PDF output, ruff and mypy):
+Install the development dependencies (pytest, coverage, the optional fpdf2, pandas, matplotlib and Pygments integrations, pypdf for checking PDF output, ruff and mypy):
 
 ```bash
 pip install -e .[dev]

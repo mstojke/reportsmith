@@ -29,7 +29,8 @@ Issues = "https://github.com/mstojke/reportsmith/issues"
 
 [project.optional-dependencies]
 pdf = ["fpdf2>=2.8.4"]
-dev = ["pytest", "pytest-cov", "fpdf2>=2.8.4", "pandas", "matplotlib", "pypdf", "ruff", "mypy"]
+highlight = ["pygments"]
+dev = ["pytest", "pytest-cov", "fpdf2>=2.8.4", "pandas", "matplotlib", "pygments", "pypdf", "ruff", "mypy"]
 docs = ["sphinx", "myst-parser", "sphinx-rtd-theme"]
 
 [tool.setuptools.dynamic]

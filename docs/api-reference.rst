@@ -30,7 +30,7 @@ Type aliases
 Report
 ======
 
-.. py:class:: Report(title, author="", date=None, subtitle="")
+.. py:class:: Report(title, author="", date=None, subtitle="", description="", keywords=(), language="en")
 
    Top-level container.
 
@@ -41,52 +41,68 @@ Report
       pass ``""`` to suppress the date line.
    :type date: str | datetime.date | datetime.datetime | None
    :param str subtitle: Optional subtitle line.
+   :param str description: Document description: HTML ``<meta
+      name="description">``, PDF subject, LaTeX ``pdfsubject``, Markdown
+      front matter.
+   :param keywords: Sequence of strings: HTML ``<meta name="keywords">``,
+      PDF keywords, LaTeX ``pdfkeywords``, Markdown front matter.
+   :param str language: Language tag: HTML ``lang``, PDF language, LaTeX
+      ``pdflang``, Markdown front matter ``lang``.
+   :raises TypeError: if *keywords* is a single string.
 
    Inherits the full builder API from :class:`Container` and adds the
    export methods below.
 
-   .. py:method:: to_markdown(assets_dir=None) -> str
+   .. py:method:: to_markdown(assets_dir=None, front_matter=False) -> str
 
       Render the report as GitHub-flavored Markdown. Figures made from plots
       or image bytes are embedded as data URIs, or written as files into
-      *assets_dir* when given.
+      *assets_dir* when given. ``front_matter=True`` starts the document
+      with a YAML block of the report's metadata.
 
-   .. py:method:: to_html(full_document=True, css=None) -> str
+   .. py:method:: to_html(full_document=True, css=None, theme="auto", highlight=False) -> str
 
       Render the report as HTML: a full standalone page with embedded CSS,
       or just the body markup when ``full_document=False``. ``css`` replaces
-      the default stylesheet.
+      the default stylesheet; ``theme`` (``"auto"``, ``"light"``,
+      ``"dark"``) chooses its colours.
+      ``highlight=True`` colours code blocks with Pygments (``pip install
+      reportsmith[highlight]``); see :ref:`highlighting`.
 
-   .. py:method:: save_markdown(path) -> pathlib.Path
+   .. py:method:: save_markdown(path, front_matter=False) -> pathlib.Path
 
       Write UTF-8 Markdown to *path* and return it. Figures made from plots
       or image bytes are written to a ``<name>_files/`` folder next to it
       and linked relatively.
 
-   .. py:method:: save_html(path, full_document=True, css=None) -> pathlib.Path
+   .. py:method:: save_html(path, full_document=True, css=None, theme="auto", highlight=False) -> pathlib.Path
 
       Write UTF-8 HTML to *path* and return it.
 
-   .. py:method:: to_latex(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False, assets_dir=None) -> str
+   .. py:method:: to_latex(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False, assets_dir=None, highlight=False) -> str
 
       Render the report as LaTeX source. See :class:`LatexRenderer` for the
       parameters. *assets_dir* is required when the report has figures made
       from plots or image bytes.
+      ``highlight=True`` colours code blocks with Pygments (``pip install
+      reportsmith[highlight]``); see :ref:`highlighting`.
 
-   .. py:method:: save_latex(path, full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False) -> pathlib.Path
+   .. py:method:: save_latex(path, full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False, highlight=False) -> pathlib.Path
 
       Write UTF-8 LaTeX to *path* and return it. Figures made from plots or
       image bytes are written to a ``<name>_files/`` folder next to it
       (plots as vector PDF).
 
-   .. py:method:: to_pdf(fonts=None, mono_fonts=None) -> bytes
+   .. py:method:: to_pdf(fonts=None, mono_fonts=None, highlight=False) -> bytes
 
       Render the report as PDF bytes. Requires the optional ``fpdf2``
       dependency (``pip install reportsmith[pdf]``); raises
       :class:`ImportError` with an install hint otherwise. See
       :class:`PdfRenderer` for the font parameters.
+      ``highlight=True`` colours code blocks with Pygments (``pip install
+      reportsmith[highlight]``); see :ref:`highlighting`.
 
-   .. py:method:: save_pdf(path, fonts=None, mono_fonts=None) -> pathlib.Path
+   .. py:method:: save_pdf(path, fonts=None, mono_fonts=None, highlight=False) -> pathlib.Path
 
       Write the PDF export to *path* and return it (requires ``fpdf2``).
 
@@ -197,7 +213,28 @@ Container (builder API)
 
    .. py:method:: add(element) -> Container
 
-      Append any pre-built :class:`Element`.
+      Append any pre-built :class:`Element`. A :class:`Section` or
+      :class:`Callout` is re-levelled to fit here, together with its
+      subsections and its default-levelled headings (explicit ``level=``
+      values are kept), so a section built on its own gets the right level.
+
+      :raises TypeError: for a :class:`Report` (use :meth:`extend`).
+
+   .. py:method:: extend(source, label_prefix="") -> Container
+
+      Append deep copies of *source*'s content — a :class:`Report`,
+      :class:`Section` or :class:`Callout` (its children), or an iterable of
+      elements — re-levelled to fit here. The source is not changed and can
+      be merged again.
+
+      Tables of contents are skipped when *source* is a container.
+      *label_prefix* is prepended to every figure and table label in the
+      copies and to the :func:`ref` cross-references that point to them,
+      keeping labels unique when merging reports. Plot objects in figures
+      are shared, not copied.
+
+      :raises ValueError: for a *label_prefix* that would make an invalid
+         label.
 
 Elements
 ========
@@ -405,6 +442,16 @@ render-agnostic.
    the built-in preamble). PDF: a coloured bar and title that continue
    across page breaks.
 
+.. _highlighting:
+
+Syntax highlighting
+===================
+
+Optional, via Pygments (``pip install reportsmith[highlight]``), and off
+unless ``highlight=True`` is passed to an HTML, LaTeX or PDF export. Code
+blocks whose ``language`` Pygments recognises are coloured; others stay
+plain. Markdown output is unchanged.
+
 Inline spans
 ============
 
@@ -463,17 +510,18 @@ Each renderer exposes ``render(report)``. :meth:`Report.to_markdown`,
 :meth:`Report.to_html`, :meth:`Report.to_latex`, and :meth:`Report.to_pdf`
 are convenience wrappers around these.
 
-.. py:class:: MarkdownRenderer(assets_dir=None, assets_url=None)
+.. py:class:: MarkdownRenderer(assets_dir=None, assets_url=None, front_matter=False)
 
    GitHub-flavored Markdown. Blocks are separated by blank lines; table
    alignment uses ``:---`` / ``:---:`` / ``---:`` markers. Figures made
    from plots or image bytes are written into *assets_dir* when given and
    referenced as *assets_url* + file name (default: the directory path);
-   otherwise they are embedded as data URIs.
+   otherwise they are embedded as data URIs. ``front_matter=True``
+   prepends a YAML block with the report's metadata.
 
    .. py:method:: render(report) -> str
 
-.. py:class:: HtmlRenderer(full_document=True, css=None)
+.. py:class:: HtmlRenderer(full_document=True, css=None, theme="auto", highlight=False)
 
    :param bool full_document: ``True`` produces a complete
       ``<!DOCTYPE html>`` page with ``<title>`` from the report title and
@@ -483,13 +531,28 @@ are convenience wrappers around these.
       variable-based stylesheet with automatic dark mode
       (``prefers-color-scheme``). Pass any CSS string to replace it, or
       concatenate with ``DEFAULT_CSS`` to extend it.
+   :param str theme: ``"auto"``, ``"light"`` or ``"dark"`` — which colours
+      the default stylesheet uses (ignored when *css* is given). Every
+      theme prints with light colours.
+   :param bool highlight: Colour code blocks with Pygments; token colours
+      are appended to the stylesheet (also to a custom *css*).
+   :raises ValueError: for an unknown *theme*.
+   :raises ImportError: for ``highlight=True`` without Pygments.
+
+.. py:function:: reportsmith.renderers.html.theme_css(theme="auto") -> str
+
+   The default stylesheet for a theme; ``DEFAULT_CSS`` is
+   ``theme_css("auto")``. All colours are CSS variables: ``--text``,
+   ``--muted``, ``--border``, ``--accent``, ``--code-bg``, ``--bg``,
+   ``--note``, ``--tip``, ``--important``, ``--warning``, ``--caution``.
+   Includes a print stylesheet.
 
    All text content and attribute values are HTML-escaped; table alignment
    is emitted as inline ``text-align`` styles.
 
    .. py:method:: render(report) -> str
 
-.. py:class:: LatexRenderer(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False, assets_dir=None, assets_url=None)
+.. py:class:: LatexRenderer(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False, assets_dir=None, assets_url=None, highlight=False)
 
    :param bool full_document: ``True`` produces a complete document
       (preamble, ``\maketitle`` block, body) that compiles with pdfLaTeX,
@@ -504,6 +567,8 @@ are convenience wrappers around these.
    :param assets_dir: Where figures made from plots or image bytes are
       written (required if the report has any); referenced as
       *assets_url* + file name, default the directory path.
+   :param bool highlight: Colour code blocks with Pygments; its ``\PY``
+      macros are added to the preamble of a full document.
 
    All text is LaTeX-escaped (also available as
    ``reportsmith.renderers.latex.escape_latex``). Tables use ``longtable``
@@ -513,7 +578,7 @@ are convenience wrappers around these.
 
    .. py:method:: render(report) -> str
 
-.. py:class:: PdfRenderer(fonts=None, mono_fonts=None)
+.. py:class:: PdfRenderer(fonts=None, mono_fonts=None, highlight=False)
 
    Renders a Report to an A4 PDF document. Requires the optional ``fpdf2``
    dependency (``pip install reportsmith[pdf]``), imported lazily on
@@ -526,6 +591,11 @@ are convenience wrappers around these.
       unsupported characters to ``?``.
    :param mono_fonts: same, for code; auto-detects Consolas/DejaVu Mono and
       falls back to core Courier.
+   :param bool highlight: Colour code blocks with Pygments.
+
+   The document properties hold the report's title, author, description
+   (subject), keywords and language, with ``reportsmith <version>`` as the
+   creator.
 
    Sections become PDF outline bookmarks; links are clickable; missing
    images render as a ``[Image: alt]`` placeholder; table cells keep
@@ -546,6 +616,10 @@ Invalid or mis-sized ``align``                       ``ValueError`` (constructio
 Invalid ``Raw`` format                               ``ValueError`` (construction)
 Malformed definition-list or task-list entry         ``ValueError`` (construction)
 ``save()`` with an unknown file extension            ``ValueError``
+``keywords`` given as a single string                ``TypeError`` (construction)
+Unknown HTML ``theme``                               ``ValueError`` (render)
+``highlight=True`` without Pygments                  ``ImportError`` (render)
+``add()`` given a ``Report``; sections in a callout  ``TypeError``
 ``TableOfContents`` depth outside 1–5                ``ValueError`` (construction)
 Invalid figure source, width or label                ``ValueError`` / ``TypeError``
 Label without a caption                              ``ValueError`` (construction)

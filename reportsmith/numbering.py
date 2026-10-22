@@ -46,7 +46,10 @@ class Numbering:
             self._numbers[id(el)] = counters[kind]
             if el.label:
                 if el.label in self._labels:
-                    raise ValueError(f"Duplicate label {el.label!r}")
+                    raise ValueError(
+                        f"Duplicate label {el.label!r} (when merging reports, "
+                        "extend(..., label_prefix=...) keeps labels unique)"
+                    )
                 self._labels[el.label] = (kind, counters[kind])
 
     def number(self, el: Captioned) -> int:

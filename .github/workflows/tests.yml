@@ -152,13 +152,14 @@ jobs:
 
       - name: Generate LaTeX from the examples
         run: |
-          python -m pip install -e ".[pdf]" pandas matplotlib
+          python -m pip install -e ".[pdf,highlight]" pandas matplotlib
           python example.py
           python examples/toc_example.py
           python examples/data_tables_example.py
           python examples/callouts_example.py
           python examples/figures_example.py
           python examples/lists_example.py
+          python examples/merge_example.py
 
       - name: Compile with ${{ matrix.engine }}
         run: |

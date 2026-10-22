@@ -25,6 +25,7 @@ from ..elements import (
     TableOfContents,
 )
 from ..assets import data_uri, path_reference
+from ..highlight import html_css as highlight_css, html_spans, require_pygments
 from ..inline import Inline, InlineContent
 from ..numbering import Numbering
 from ..toc import TocEntry, build_tree, collect_entries, find_tocs, heading_anchors
@@ -32,25 +33,33 @@ from ..toc import TocEntry, build_tree, collect_entries, find_tocs, heading_anch
 if TYPE_CHECKING:
     from ..report import Report
 
-DEFAULT_CSS = """\
-:root {
+_LIGHT_VARS = """\
   --text: #1f2933;
   --muted: #6b7280;
   --border: #d7dbe0;
   --accent: #1d4ed8;
   --code-bg: #f3f4f6;
   --bg: #ffffff;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #e5e7eb;
-    --muted: #9ca3af;
-    --border: #374151;
-    --accent: #60a5fa;
-    --code-bg: #1f2937;
-    --bg: #111827;
-  }
-}
+  --note: #1d4ed8;
+  --tip: #15803d;
+  --important: #7c3aed;
+  --warning: #b45309;
+  --caution: #b91c1c;
+"""
+_DARK_VARS = """\
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --border: #374151;
+  --accent: #60a5fa;
+  --code-bg: #1f2937;
+  --bg: #111827;
+  --note: #60a5fa;
+  --tip: #4ade80;
+  --important: #a78bfa;
+  --warning: #fbbf24;
+  --caution: #f87171;
+"""
+_BASE_CSS = """\
 body {
   margin: 0 auto;
   max-width: 52rem;
@@ -87,22 +96,14 @@ dt { font-weight: 600; }
 dd { margin: 0 0 0.6em 1.5em; }
 ul.task-list { list-style: none; padding-left: 0.2em; }
 ul.task-list input { margin: 0 0.5em 0 0; }
-@media print { .page-break { break-after: page; } }
 .callout { --callout: var(--accent); border-left: 4px solid var(--callout); border-radius: 6px; background: var(--code-bg); padding: 0.6em 1em; margin: 1em 0; }
 .callout > :last-child { margin-bottom: 0; }
 .callout-title { color: var(--callout); font-weight: 600; margin: 0 0 0.3em; }
-.callout-note { --callout: #1d4ed8; }
-.callout-tip { --callout: #15803d; }
-.callout-important { --callout: #7c3aed; }
-.callout-warning { --callout: #b45309; }
-.callout-caution { --callout: #b91c1c; }
-@media (prefers-color-scheme: dark) {
-  .callout-note { --callout: #60a5fa; }
-  .callout-tip { --callout: #4ade80; }
-  .callout-important { --callout: #a78bfa; }
-  .callout-warning { --callout: #fbbf24; }
-  .callout-caution { --callout: #f87171; }
-}
+.callout-note { --callout: var(--note); }
+.callout-tip { --callout: var(--tip); }
+.callout-important { --callout: var(--important); }
+.callout-warning { --callout: var(--warning); }
+.callout-caution { --callout: var(--caution); }
 sup.footnote-ref a { text-decoration: none; }
 .footnotes { color: var(--muted); font-size: 0.9rem; margin-top: 3em; }
 .footnote-back { text-decoration: none; }
@@ -112,6 +113,46 @@ figcaption, caption { color: var(--muted); font-size: 0.85rem; }
 figcaption { margin-top: 0.4em; }
 .caption-label { font-weight: 600; }
 """
+# Printing always uses the light colours, keeps blocks whole where it can,
+# and shows the target of external links.
+_PRINT_CSS = (
+    "@media print {\n"
+    "  :root {\n" + _LIGHT_VARS.replace("\n  ", "\n    ").replace("  --text", "    --text", 1) + "  }\n"
+    """\
+  body { max-width: none; padding: 0; }
+  h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+  figure, pre, blockquote, .callout, tr, img { break-inside: avoid; }
+  pre { white-space: pre-wrap; overflow: visible; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; color: var(--muted); font-size: 0.85em; word-break: break-all; }
+  .page-break { break-after: page; }
+}
+"""
+)
+
+THEMES = ("auto", "light", "dark")
+
+
+def theme_css(theme: str = "auto") -> str:
+    """The default stylesheet for a colour theme.
+
+    ``"auto"`` follows the reader's light/dark preference
+    (``prefers-color-scheme``); ``"light"`` and ``"dark"`` are fixed.
+    """
+    if theme not in THEMES:
+        raise ValueError(f"theme must be one of {', '.join(map(repr, THEMES))}, got {theme!r}")
+    if theme == "auto":
+        dark = _DARK_VARS.replace("  --", "    --")
+        root = (
+            ":root {\n" + _LIGHT_VARS + "}\n"
+            "@media (prefers-color-scheme: dark) {\n  :root {\n" + dark + "  }\n}\n"
+        )
+    else:
+        root = ":root {\n" + (_LIGHT_VARS if theme == "light" else _DARK_VARS) + "}\n"
+    return root + _BASE_CSS + _PRINT_CSS
+
+
+#: The default stylesheet (automatic light/dark theme).
+DEFAULT_CSS = theme_css("auto")
 
 
 class HtmlRenderer:
@@ -121,19 +162,44 @@ class HtmlRenderer:
     stylesheet embedded; otherwise only the body markup is produced.
     """
 
-    def __init__(self, full_document: bool = True, css: Optional[str] = None):
+    def __init__(
+        self,
+        full_document: bool = True,
+        css: Optional[str] = None,
+        theme: str = "auto",
+        highlight: bool = False,
+    ):
         self.full_document = full_document
-        self.css = DEFAULT_CSS if css is None else css
+        self.css = theme_css(theme) if css is None else css
+        self.highlight = highlight
+        if highlight:
+            require_pygments()
+            # Token colours are added even to a custom stylesheet.
+            self.css += highlight_css("auto" if css is not None else theme)
 
     def render(self, report: "Report") -> str:
         body = self._body(report)
         if not self.full_document:
             return body
+        from .. import __version__
+
+        meta = [
+            ("author", report.author),
+            ("description", report.description),
+            ("keywords", ", ".join(report.keywords)),
+            ("generator", f"reportsmith {__version__}"),
+        ]
+        meta_tags = "".join(
+            f'<meta name="{name}" content="{escape(value, quote=True)}">\n'
+            for name, value in meta
+            if value
+        )
         return (
             "<!DOCTYPE html>\n"
-            '<html lang="en">\n<head>\n'
+            f'<html lang="{escape(report.language, quote=True)}">\n<head>\n'
             '<meta charset="utf-8">\n'
             '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+            f"{meta_tags}"
             f"<title>{escape(report.title)}</title>\n"
             f"<style>\n{self.css}</style>\n"
             "</head>\n<body>\n"
@@ -186,7 +252,8 @@ class HtmlRenderer:
             return f"<blockquote><p>{self._inline(el.parts)}</p></blockquote>\n"
         if isinstance(el, CodeBlock):
             cls = f' class="language-{escape(el.language, quote=True)}"' if el.language else ""
-            return f"<pre><code{cls}>{escape(el.source)}</code></pre>\n"
+            spans = html_spans(el.source, el.language) if self.highlight else None
+            return f"<pre><code{cls}>{spans if spans is not None else escape(el.source)}</code></pre>\n"
         if isinstance(el, ListElement):
             return self._list(el)
         if isinstance(el, DefinitionList):

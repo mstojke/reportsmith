@@ -106,7 +106,9 @@ class TestHtml:
 
     def test_css(self):
         css = report().to_html()
-        assert "ul.task-list" in css and "@media print { .page-break" in css
+        assert "ul.task-list" in css
+        print_block = css[css.index("@media print {"):]
+        assert ".page-break { break-after: page; }" in print_block
 
     def test_empty_lists_omitted(self):
         r = report()

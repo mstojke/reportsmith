@@ -15,8 +15,12 @@ class Report(Container):
     Content is added through the fluent builder methods inherited from
     :class:`~reportsmith.elements.Container` (``paragraph``, ``table``,
     ``section``, ...) and exported with :meth:`to_markdown` /
-    :meth:`to_html` / :meth:`to_latex` or saved with :meth:`save_markdown` /
-    :meth:`save_html` / :meth:`save_latex`.
+    :meth:`to_html` / :meth:`to_latex` / :meth:`to_pdf`, or saved with the
+    matching ``save_*`` methods or :meth:`save`.
+
+    ``description``, ``keywords`` and ``language`` are document metadata:
+    HTML ``<meta>`` tags and ``lang``, PDF document properties, LaTeX's PDF
+    fields, and optional Markdown front matter.
     """
 
     def __init__(
@@ -25,11 +29,19 @@ class Report(Container):
         author: str = "",
         date: Optional[Union[str, _dt.date, _dt.datetime]] = None,
         subtitle: str = "",
+        description: str = "",
+        keywords: Sequence[str] = (),
+        language: str = "en",
     ):
         super().__init__()
         self.title = title
         self.author = author
         self.subtitle = subtitle
+        self.description = description
+        if isinstance(keywords, str):
+            raise TypeError("keywords must be a sequence of strings, not a single string")
+        self.keywords = [str(k) for k in keywords]
+        self.language = language
         if date is None:
             self.date = _dt.date.today().isoformat()
         elif isinstance(date, (_dt.date, _dt.datetime)):
@@ -40,31 +52,47 @@ class Report(Container):
 
     # -- export ----------------------------------------------------------
 
-    def to_markdown(self, assets_dir: Optional[Union[str, Path]] = None) -> str:
+    def to_markdown(
+        self, assets_dir: Optional[Union[str, Path]] = None, front_matter: bool = False
+    ) -> str:
         """Render the report as a Markdown string.
 
         Figures made from plots or image bytes are embedded as data URIs,
         or written as files into ``assets_dir`` when given.
+        ``front_matter=True`` starts the document with a YAML metadata block
+        (title, author, date, ...) for static-site generators.
         """
         from .renderers.markdown import MarkdownRenderer
 
-        return MarkdownRenderer(assets_dir=assets_dir).render(self)
+        return MarkdownRenderer(assets_dir=assets_dir, front_matter=front_matter).render(self)
 
-    def to_html(self, full_document: bool = True, css: Optional[str] = None) -> str:
+    def to_html(
+        self,
+        full_document: bool = True,
+        css: Optional[str] = None,
+        theme: str = "auto",
+        highlight: bool = False,
+    ) -> str:
         """Render the report as HTML.
 
         ``full_document=True`` (default) produces a standalone page with
         embedded CSS; ``False`` produces only the body fragment. Pass ``css``
-        to replace the built-in stylesheet.
+        to replace the built-in stylesheet, or ``theme`` (``"auto"``,
+        ``"light"`` or ``"dark"``) to choose its colours. ``highlight=True``
+        colours code blocks with Pygments (``pip install
+        reportsmith[highlight]``).
         """
         from .renderers.html import HtmlRenderer
 
-        return HtmlRenderer(full_document=full_document, css=css).render(self)
+        return HtmlRenderer(
+            full_document=full_document, css=css, theme=theme, highlight=highlight
+        ).render(self)
 
     def to_pdf(
         self,
         fonts: Optional[Sequence[str]] = None,
         mono_fonts: Optional[Sequence[str]] = None,
+        highlight: bool = False,
     ) -> bytes:
         """Render the report as PDF bytes.
 
@@ -72,10 +100,11 @@ class Report(Container):
         reportsmith[pdf]``). ``fonts`` / ``mono_fonts`` are optional
         (regular, bold, italic, bold-italic) TTF path quadruples; by default
         a Unicode-capable system font family is auto-detected.
+        ``highlight=True`` colours code blocks with Pygments.
         """
         from .renderers.pdf import PdfRenderer
 
-        return PdfRenderer(fonts=fonts, mono_fonts=mono_fonts).render(self)
+        return PdfRenderer(fonts=fonts, mono_fonts=mono_fonts, highlight=highlight).render(self)
 
     def to_latex(
         self,
@@ -85,6 +114,7 @@ class Report(Container):
         preamble: str = "",
         numbered: bool = False,
         assets_dir: Optional[Union[str, Path]] = None,
+        highlight: bool = False,
     ) -> str:
         """Render the report as LaTeX source.
 
@@ -93,6 +123,7 @@ class Report(Container):
         is appended to the built-in preamble; ``numbered=True`` numbers
         sections. Figures made from plots or image bytes are written as files
         into ``assets_dir``, which is required when the report has any.
+        ``highlight=True`` colours code blocks with Pygments.
         """
         from .renderers.latex import LatexRenderer
 
@@ -103,9 +134,10 @@ class Report(Container):
             preamble=preamble,
             numbered=numbered,
             assets_dir=assets_dir,
+            highlight=highlight,
         ).render(self)
 
-    def save_markdown(self, path: Union[str, Path]) -> Path:
+    def save_markdown(self, path: Union[str, Path], front_matter: bool = False) -> Path:
         """Write the Markdown export to ``path`` and return it.
 
         Figures made from plots or image bytes are written into a
@@ -115,16 +147,24 @@ class Report(Container):
 
         path = Path(path)
         assets_dir, assets_url = _assets_for(path)
-        text = MarkdownRenderer(assets_dir=assets_dir, assets_url=assets_url).render(self)
+        text = MarkdownRenderer(
+            assets_dir=assets_dir, assets_url=assets_url, front_matter=front_matter
+        ).render(self)
         path.write_text(text, encoding="utf-8")
         return path
 
     def save_html(
-        self, path: Union[str, Path], full_document: bool = True, css: Optional[str] = None
+        self,
+        path: Union[str, Path],
+        full_document: bool = True,
+        css: Optional[str] = None,
+        theme: str = "auto",
+        highlight: bool = False,
     ) -> Path:
         """Write the HTML export to ``path`` and return it."""
         path = Path(path)
-        path.write_text(self.to_html(full_document=full_document, css=css), encoding="utf-8")
+        html = self.to_html(full_document=full_document, css=css, theme=theme, highlight=highlight)
+        path.write_text(html, encoding="utf-8")
         return path
 
     def save_latex(
@@ -135,6 +175,7 @@ class Report(Container):
         class_options: str = "11pt,a4paper",
         preamble: str = "",
         numbered: bool = False,
+        highlight: bool = False,
     ) -> Path:
         """Write the LaTeX export to ``path`` and return it.
 
@@ -153,6 +194,7 @@ class Report(Container):
             numbered=numbered,
             assets_dir=assets_dir,
             assets_url=assets_url,
+            highlight=highlight,
         ).render(self)
         path.write_text(text, encoding="utf-8")
         return path
@@ -162,10 +204,11 @@ class Report(Container):
         path: Union[str, Path],
         fonts: Optional[Sequence[str]] = None,
         mono_fonts: Optional[Sequence[str]] = None,
+        highlight: bool = False,
     ) -> Path:
         """Write the PDF export to ``path`` and return it (requires fpdf2)."""
         path = Path(path)
-        path.write_bytes(self.to_pdf(fonts=fonts, mono_fonts=mono_fonts))
+        path.write_bytes(self.to_pdf(fonts=fonts, mono_fonts=mono_fonts, highlight=highlight))
         return path
 
     def save(self, path: Union[str, Path], **options: Any) -> Path:

@@ -38,6 +38,7 @@ from ..elements import (
     Table,
     TableOfContents,
 )
+from ..highlight import pdf_tokens, require_pygments
 from ..inline import Inline, InlineContent
 from ..numbering import Numbering
 from ..toc import collect_entries, find_tocs, plain_text
@@ -127,9 +128,13 @@ class PdfRenderer:
         self,
         fonts: Optional[Sequence[str]] = None,
         mono_fonts: Optional[Sequence[str]] = None,
+        highlight: bool = False,
     ):
         self._fonts = fonts
         self._mono_fonts = mono_fonts
+        self.highlight = highlight
+        if highlight:
+            require_pygments()
         self.unicode = False
         self.body_family = "helvetica"
         self.mono_family = "courier"
@@ -156,9 +161,18 @@ class PdfRenderer:
         self._numbering = Numbering(report)
         self._ref_links: dict[str, int] = {}  # label -> fpdf link id
         pdf.add_page()
+        from .. import __version__
+
         pdf.set_title(report.title)
         if report.author:
             pdf.set_author(report.author)
+        if report.description:
+            pdf.set_subject(report.description)
+        if report.keywords:
+            pdf.set_keywords(", ".join(report.keywords))
+        if report.language:
+            pdf.set_lang(report.language)
+        pdf.set_creator(f"reportsmith {__version__}")
         self._title_block(pdf, report)
         for child in report.children:
             self._element(pdf, child)
@@ -234,6 +248,8 @@ class PdfRenderer:
             pdf.ln(1.5)
         elif isinstance(el, Quote):
             self._quote(pdf, el)
+        elif isinstance(el, CodeBlock) and self.highlight and (runs := pdf_tokens(el.source, el.language)):
+            self._highlighted_code(pdf, runs)
         elif isinstance(el, CodeBlock):
             pdf.set_font(self.mono_family, "", 9.5)
             pdf.set_text_color(*_TEXT)
@@ -400,6 +416,40 @@ class PdfRenderer:
             pdf.set_line_width(0.2)
         pdf.set_left_margin(root)
         pdf.ln(1.5)
+
+    def _highlighted_code(self, pdf, runs) -> None:
+        # Drawn line by line, so the shaded background follows page breaks:
+        # each source line gets a background box as tall as it wraps to.
+        line_h = 5
+        lines: list[list] = [[]]
+        for text, rgb, style in runs:
+            for i, piece in enumerate(text.split("\n")):
+                if i:
+                    lines.append([])
+                if piece:
+                    lines[-1].append((piece, rgb, style))
+        for line in lines:
+            pdf.set_font(self.mono_family, "", 9.5)
+            plain = self._t("".join(piece for piece, _, _ in line)) or " "
+            wrapped = pdf.multi_cell(0, line_h, plain, dry_run=True, output="LINES")
+            height = line_h * len(wrapped)
+            if pdf.get_y() + height > pdf.page_break_trigger:
+                pdf.add_page()
+            y = pdf.get_y()
+            pdf.set_fill_color(*_CODE_BG)
+            pdf.rect(pdf.l_margin, y, pdf.epw, height, style="F")
+            root = pdf.l_margin
+            # Wrapped continuation lines start at the same inset as the first.
+            pdf.set_left_margin(root + pdf.c_margin)
+            pdf.set_xy(root + pdf.c_margin, y)
+            for piece, rgb, style in line:
+                pdf.set_font(self.mono_family, style, 9.5)
+                pdf.set_text_color(*(rgb or _TEXT))
+                pdf.write(line_h, self._t(piece))
+            pdf.set_left_margin(root)
+            pdf.set_xy(root, y + height)
+        pdf.set_text_color(*_TEXT)
+        pdf.ln(2.5)
 
     def _definitions(self, pdf, el: DefinitionList) -> None:
         root = pdf.l_margin
