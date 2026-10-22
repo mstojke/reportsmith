@@ -14,6 +14,9 @@ from ..elements import (
     HorizontalRule,
     Image,
     ListElement,
+    DefinitionList,
+    TaskList,
+    PageBreak,
     Paragraph,
     Quote,
     Raw,
@@ -80,6 +83,11 @@ nav.toc ul { list-style: none; margin: 0; padding-left: 1.2em; }
 nav.toc > ul { padding-left: 0; }
 nav.toc a { text-decoration: none; }
 nav.toc a:hover { text-decoration: underline; }
+dt { font-weight: 600; }
+dd { margin: 0 0 0.6em 1.5em; }
+ul.task-list { list-style: none; padding-left: 0.2em; }
+ul.task-list input { margin: 0 0.5em 0 0; }
+@media print { .page-break { break-after: page; } }
 .callout { --callout: var(--accent); border-left: 4px solid var(--callout); border-radius: 6px; background: var(--code-bg); padding: 0.6em 1em; margin: 1em 0; }
 .callout > :last-child { margin-bottom: 0; }
 .callout-title { color: var(--callout); font-weight: 600; margin: 0 0 0.3em; }
@@ -181,6 +189,25 @@ class HtmlRenderer:
             return f"<pre><code{cls}>{escape(el.source)}</code></pre>\n"
         if isinstance(el, ListElement):
             return self._list(el)
+        if isinstance(el, DefinitionList):
+            if not el.items:
+                return ""
+            items = "".join(
+                f"<dt>{self._inline(term)}</dt>\n<dd>{self._inline(definition)}</dd>\n"
+                for term, definition in el.items
+            )
+            return f"<dl>\n{items}</dl>\n"
+        if isinstance(el, TaskList):
+            if not el.items:
+                return ""
+            items = "".join(
+                f'<li><input type="checkbox" disabled{" checked" if done else ""}> '
+                f"{self._inline(text)}</li>\n"
+                for done, text in el.items
+            )
+            return f'<ul class="task-list">\n{items}</ul>\n'
+        if isinstance(el, PageBreak):
+            return '<div class="page-break"></div>\n'
         if isinstance(el, Table):
             return self._table(el)
         if isinstance(el, Figure):

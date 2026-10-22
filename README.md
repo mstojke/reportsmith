@@ -10,7 +10,7 @@ A small, dependency-free Python library for building reports programmatically an
 - Fluent builder API with chainable methods and nested sections (`with report.section(...)`)
 - Table of contents in every format: linked lists in Markdown/HTML, `\tableofcontents` in LaTeX, clickable entries with page numbers in PDF
 - Tables straight from data: lists of dicts, CSV files, or pandas DataFrames, with number formatting, missing-value placeholders, and automatic right-alignment of numeric columns
-- Elements: headings, paragraphs, tables (with alignment and captions), bullet/numbered lists (nestable), code blocks, block quotes, images, horizontal rules, and format-specific raw passthrough
+- Elements: headings, paragraphs, tables (with alignment and captions), bullet/numbered lists (nestable), definition lists, task lists, page breaks, code blocks, block quotes, images, horizontal rules, and format-specific raw passthrough
 - Inline formatting helpers: `bold()`, `italic()`, `code()`, `link()`, `strike()`, `sub()`, `sup()`, and numbered `footnote()`s — rendered natively in every format
 - Figures from image files, image bytes, or matplotlib plots, with numbered captions ("Figure 1", "Table 2") and `ref()` cross-references
 - Callouts (note, tip, important, warning, caution): GitHub alerts in Markdown, coloured boxes in HTML, LaTeX and PDF
@@ -56,6 +56,7 @@ print(report.to_html())              # standalone HTML page
 report.save_markdown("report.md")
 report.save_html("report.html")
 report.save_latex("report.tex")    # compile with pdflatex/xelatex/lualatex
+report.save("report.pdf")          # any format, chosen by the file extension
 ```
 
 Run `python example.py` for a fuller demo that writes `example_report.md`, `example_report.html`, and `example_report.tex`.
@@ -93,6 +94,9 @@ Builder methods (all chainable, also available on sections):
 | `quote(content)` | Block quote |
 | `code(source, language="")` | Fenced/`<pre>` code block |
 | `bullet_list(items)` / `numbered_list(items)` | List; items may be text or a nested `ListElement` |
+| `definition_list(items)` | `(term, definition)` pairs or a mapping |
+| `task_list(items)` | Checklist of `(done, text)` pairs |
+| `page_break()` | New page in PDF/LaTeX, and when printing HTML |
 | `table(headers, rows, caption="", align=None, label="")` | Table; `align` entries are `"left"`, `"center"`, `"right"`; captioned tables are numbered |
 | `table_from_records(records)` / `table_from_csv(source)` / `table_from_dataframe(df)` | Table built from data; options `columns`, `headers`, `formats`, `missing`, `align`, `caption` |
 | `figure(source, caption="", alt="", label="", width=None)` | Figure from an image path, image bytes, or a plot; captioned figures are numbered |
@@ -112,6 +116,7 @@ Anywhere text is accepted you may pass a plain string or a list mixing strings w
 - `report.to_latex(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False)` → LaTeX source; `full_document=False` returns just the body, `preamble=` is appended to the built-in preamble
 - `report.to_pdf(fonts=None, mono_fonts=None)` → PDF bytes (requires the `pdf` extra); pass TTF path quadruples to control typefaces
 - `report.save_markdown(path)` / `report.save_html(path, ...)` / `report.save_latex(path, ...)` / `report.save_pdf(path, ...)` → write to a file, return the `Path`
+- `report.save(path, **options)` → the same, with the format chosen by the extension (`.md`, `.html`, `.tex`, `.pdf`)
 
 ## Running tests
 

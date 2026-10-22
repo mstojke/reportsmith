@@ -15,6 +15,9 @@ from ..elements import (
     HorizontalRule,
     Image,
     ListElement,
+    DefinitionList,
+    TaskList,
+    PageBreak,
     Paragraph,
     Quote,
     Raw,
@@ -102,6 +105,19 @@ class MarkdownRenderer:
             return [f"{fence}{el.language}\n{el.source}\n{fence}"]
         if isinstance(el, ListElement):
             return ["\n".join(self._list_lines(el, indent=0))]
+        if isinstance(el, DefinitionList):
+            # Markdown has no standard definition-list syntax; a bulleted
+            # "**Term**: definition" reads well everywhere.
+            return ["\n".join(
+                f"- {self._term(term)}: {self._inline(definition)}" for term, definition in el.items
+            )] if el.items else []
+        if isinstance(el, TaskList):
+            return ["\n".join(
+                f"- [{'x' if done else ' '}] {self._inline(text)}" for done, text in el.items
+            )] if el.items else []
+        if isinstance(el, PageBreak):
+            # Invisible on GitHub; a page break where the HTML keeps styles.
+            return ['<div style="break-after: page"></div>']
         if isinstance(el, Table):
             return [self._table(el)]
         if isinstance(el, Figure):
@@ -159,6 +175,13 @@ class MarkdownRenderer:
         if el.caption:
             block += f"\n\n*{self._numbering.caption_label(el)}: {el.caption}*"
         return block
+
+    def _term(self, parts: list[InlineContent]) -> str:
+        text = self._inline(parts)
+        # Bolding a term that already contains bold would break the markers.
+        if any(isinstance(p, Inline) and p.style == "bold" for p in parts):
+            return text
+        return f"**{text}**"
 
     def _list_lines(self, el: ListElement, indent: int) -> list[str]:
         lines: list[str] = []

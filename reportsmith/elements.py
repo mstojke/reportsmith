@@ -61,6 +61,36 @@ class ListElement(Element):
                 self.items.append(normalize(item))
 
 
+class DefinitionList(Element):
+    """Terms with their definitions: a sequence of ``(term, definition)``
+    pairs, or a mapping from term to definition. Both are inline text."""
+
+    def __init__(self, items: Union[Mapping[Any, Any], Sequence[Sequence[Any]]]):
+        pairs = list(items.items()) if isinstance(items, Mapping) else list(items)
+        self.items: list[tuple[list[InlineContent], list[InlineContent]]] = []
+        for i, pair in enumerate(pairs):
+            if isinstance(pair, (str, bytes)) or len(pair) != 2:
+                raise ValueError(f"Definition {i} must be a (term, definition) pair")
+            term, definition = pair
+            self.items.append((normalize(term), normalize(definition)))
+
+
+class TaskList(Element):
+    """A checklist: a sequence of ``(done, text)`` pairs, where ``done`` is a
+    bool and ``text`` is inline text."""
+
+    def __init__(self, items: Sequence[Sequence[Any]]):
+        self.items: list[tuple[bool, list[InlineContent]]] = []
+        for i, pair in enumerate(items):
+            if isinstance(pair, (str, bytes)) or len(pair) != 2 or not isinstance(pair[0], bool):
+                raise ValueError(f"Task {i} must be a (done, text) pair with a bool first")
+            self.items.append((pair[0], normalize(pair[1])))
+
+
+class PageBreak(Element):
+    """Start a new page: in PDF and LaTeX, and when printing HTML."""
+
+
 class Table(Element):
     def __init__(
         self,
@@ -342,6 +372,23 @@ class Container(Element):
 
     def numbered_list(self, items: Sequence) -> "Container":
         self.children.append(ListElement(items, ordered=True))
+        return self
+
+    def definition_list(
+        self, items: Union[Mapping[Any, Any], Sequence[Sequence[Any]]]
+    ) -> "Container":
+        """Add a :class:`DefinitionList` of ``(term, definition)`` pairs or a mapping."""
+        self.children.append(DefinitionList(items))
+        return self
+
+    def task_list(self, items: Sequence[Sequence[Any]]) -> "Container":
+        """Add a :class:`TaskList` of ``(done, text)`` pairs."""
+        self.children.append(TaskList(items))
+        return self
+
+    def page_break(self) -> "Container":
+        """Add a :class:`PageBreak`."""
+        self.children.append(PageBreak())
         return self
 
     def table(

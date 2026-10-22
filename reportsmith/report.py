@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as _dt
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import Any, Optional, Sequence, Union
 
 from .elements import Container
 
@@ -167,6 +167,32 @@ class Report(Container):
         path = Path(path)
         path.write_bytes(self.to_pdf(fonts=fonts, mono_fonts=mono_fonts))
         return path
+
+    def save(self, path: Union[str, Path], **options: Any) -> Path:
+        """Write the report in the format given by the file extension.
+
+        ``.md`` / ``.markdown``, ``.html`` / ``.htm``, ``.tex`` and ``.pdf``
+        call :meth:`save_markdown`, :meth:`save_html`, :meth:`save_latex` and
+        :meth:`save_pdf`; ``options`` are passed on to that method.
+        """
+        path = Path(path)
+        method = _SAVERS.get(path.suffix.lower())
+        if method is None:
+            known = ", ".join(sorted(_SAVERS))
+            raise ValueError(
+                f"Can't tell the format of {path.name!r} from its extension; use one of {known}"
+            )
+        return getattr(self, method)(path, **options)
+
+
+_SAVERS = {
+    ".md": "save_markdown",
+    ".markdown": "save_markdown",
+    ".html": "save_html",
+    ".htm": "save_html",
+    ".tex": "save_latex",
+    ".pdf": "save_pdf",
+}
 
 
 def _assets_for(path: Path) -> tuple[Path, str]:

@@ -49,6 +49,40 @@ pre code { background: none; padding: 0; }
 blockquote { border-left: 4px solid var(--border); color: var(--muted); margin: 1em 0; padding: 0.1em 1em; }
 img { max-width: 100%; }
 hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+nav.toc { border: 1px solid var(--border); border-radius: 8px; padding: 0.8em 1.2em; margin: 1.5em 0; }
+nav.toc .toc-title { font-weight: 600; margin-bottom: 0.3em; }
+nav.toc ul { list-style: none; margin: 0; padding-left: 1.2em; }
+nav.toc > ul { padding-left: 0; }
+nav.toc a { text-decoration: none; }
+nav.toc a:hover { text-decoration: underline; }
+dt { font-weight: 600; }
+dd { margin: 0 0 0.6em 1.5em; }
+ul.task-list { list-style: none; padding-left: 0.2em; }
+ul.task-list input { margin: 0 0.5em 0 0; }
+@media print { .page-break { break-after: page; } }
+.callout { --callout: var(--accent); border-left: 4px solid var(--callout); border-radius: 6px; background: var(--code-bg); padding: 0.6em 1em; margin: 1em 0; }
+.callout > :last-child { margin-bottom: 0; }
+.callout-title { color: var(--callout); font-weight: 600; margin: 0 0 0.3em; }
+.callout-note { --callout: #1d4ed8; }
+.callout-tip { --callout: #15803d; }
+.callout-important { --callout: #7c3aed; }
+.callout-warning { --callout: #b45309; }
+.callout-caution { --callout: #b91c1c; }
+@media (prefers-color-scheme: dark) {
+  .callout-note { --callout: #60a5fa; }
+  .callout-tip { --callout: #4ade80; }
+  .callout-important { --callout: #a78bfa; }
+  .callout-warning { --callout: #fbbf24; }
+  .callout-caution { --callout: #f87171; }
+}
+sup.footnote-ref a { text-decoration: none; }
+.footnotes { color: var(--muted); font-size: 0.9rem; margin-top: 3em; }
+.footnote-back { text-decoration: none; }
+figure { margin: 1.5em 0; text-align: center; }
+figure img { max-width: 100%; }
+figcaption, caption { color: var(--muted); font-size: 0.85rem; }
+figcaption { margin-top: 0.4em; }
+.caption-label { font-weight: 600; }
 </style>
 </head>
 <body>
@@ -56,14 +90,14 @@ hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
 <div class="report-meta">
 <div class="subtitle">Platform team quarterly summary</div>
 <div><strong>Author:</strong> Michal Stojke</div>
-<div><strong>Date:</strong> 2026-08-26</div>
+<div><strong>Date:</strong> 2026-10-22</div>
 </div>
 <h2>Executive Summary</h2>
 <p>The platform team shipped <strong>14 features</strong> this quarter while reducing infrastructure spend by <strong>18%</strong>. Details below; raw dashboards are available <a href="https://example.com/dashboards">here</a>.</p>
 <blockquote><p>Best quarter for platform reliability since 2024.</p></blockquote>
 <h2>Key Metrics</h2>
 <table>
-<caption>Quarter-over-quarter platform metrics</caption>
+<caption><span class="caption-label">Table 1:</span> Quarter-over-quarter platform metrics</caption>
 <thead>
 <tr><th style="text-align:left">Metric</th><th style="text-align:right">Q2</th><th style="text-align:right">Q3</th><th style="text-align:right">Change</th></tr>
 </thead>

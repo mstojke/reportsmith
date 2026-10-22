@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Definition lists (`definition_list(items)`, `DefinitionList`) from
+  `(term, definition)` pairs or a mapping: `- **Term**: definition` in
+  Markdown, `<dl>` in HTML, `description` in LaTeX, and an indented layout
+  in PDF.
+- Task lists (`task_list(items)`, `TaskList`) from `(done, text)` pairs:
+  GitHub `- [x]` / `- [ ]` in Markdown, disabled checkboxes in HTML,
+  ☒ / ☐ in LaTeX, and drawn checkboxes in PDF.
+- Page breaks (`page_break()`, `PageBreak`): a new page in PDF (never a
+  blank one), `\clearpage` in LaTeX, and a print-only break in HTML.
+- `report.save(path, **options)`, which picks the format from the file
+  extension (`.md`, `.markdown`, `.html`, `.htm`, `.tex`, `.pdf`) and passes
+  options to the matching `save_*` method.
+- `examples/lists_example.py`, also compiled by the CI LaTeX job.
+
+### Changed
+
+- The `pdf` extra now requires `fpdf2>=2.8.4`, the oldest version CI
+  tests; older versions lack features the PDF renderer uses.
+- The LaTeX preamble loads `amssymb`, for the task list checkboxes.
+
 ## [0.5.0] - 2026-10-19
 
 ### Added

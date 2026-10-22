@@ -28,6 +28,9 @@ from ..elements import (
     HorizontalRule,
     Image,
     ListElement,
+    DefinitionList,
+    TaskList,
+    PageBreak,
     Paragraph,
     Quote,
     Raw,
@@ -237,6 +240,14 @@ class PdfRenderer:
             pdf.set_fill_color(*_CODE_BG)
             pdf.multi_cell(0, 5, self._t(el.source), fill=True, new_x="LMARGIN", new_y="NEXT")
             pdf.ln(2.5)
+        elif isinstance(el, DefinitionList):
+            self._definitions(pdf, el)
+        elif isinstance(el, TaskList):
+            self._tasks(pdf, el)
+        elif isinstance(el, PageBreak):
+            # Skip it at the very top of a page, to avoid a blank page.
+            if pdf.get_y() > pdf.t_margin + 0.01:
+                pdf.add_page()
         elif isinstance(el, ListElement):
             root = pdf.l_margin
             self._list_items(pdf, el, root, 0)
@@ -389,6 +400,44 @@ class PdfRenderer:
             pdf.set_line_width(0.2)
         pdf.set_left_margin(root)
         pdf.ln(1.5)
+
+    def _definitions(self, pdf, el: DefinitionList) -> None:
+        root = pdf.l_margin
+        for term, definition in el.items:
+            self._write_parts(pdf, term, BODY_SIZE, base_style="B")
+            pdf.ln(BODY_SIZE * 0.55)
+            pdf.set_left_margin(root + 6)
+            pdf.set_x(root + 6)
+            self._write_parts(pdf, definition, BODY_SIZE)
+            pdf.ln(BODY_SIZE * 0.55)
+            pdf.set_left_margin(root)
+            pdf.ln(1.5)
+        if el.items:
+            pdf.ln(1)
+
+    def _tasks(self, pdf, el: TaskList) -> None:
+        root = pdf.l_margin
+        h = BODY_SIZE * 0.55
+        box = 3.2
+        for done, text in el.items:
+            if pdf.get_y() + h > pdf.page_break_trigger:
+                pdf.add_page()
+            # Boxes are drawn, not typed: ☐/☒ glyphs are missing from many fonts.
+            x, y = root + 0.5, pdf.get_y() + (h - box) / 2
+            pdf.set_draw_color(*_TEXT)
+            pdf.set_line_width(0.3)
+            pdf.rect(x, y, box, box)
+            if done:
+                pdf.line(x + 0.6, y + 1.7, x + 1.35, y + 2.5)
+                pdf.line(x + 1.35, y + 2.5, x + 2.7, y + 0.7)
+            pdf.set_line_width(0.2)
+            pdf.set_left_margin(root + 6)
+            pdf.set_x(root + 6)
+            self._write_parts(pdf, text, BODY_SIZE)
+            pdf.ln(h)
+            pdf.set_left_margin(root)
+        if el.items:
+            pdf.ln(1.5)
 
     def _list_items(self, pdf, el: ListElement, root: float, depth: int) -> None:
         counter = 0

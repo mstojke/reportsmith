@@ -14,6 +14,9 @@ from ..elements import (
     HorizontalRule,
     Image,
     ListElement,
+    DefinitionList,
+    TaskList,
+    PageBreak,
     Paragraph,
     Quote,
     Raw,
@@ -43,6 +46,7 @@ DEFAULT_PREAMBLE = r"""\usepackage{iftex}
 \usepackage{booktabs}
 \usepackage{longtable}
 \usepackage{caption}
+\usepackage{amssymb}
 \usepackage{fancyvrb}
 \usepackage{xcolor}
 \usepackage[normalem]{ulem}
@@ -94,6 +98,8 @@ _SECTION_COMMANDS = {
     6: "subparagraph",
 }
 _ALIGN_SPEC = {"left": "l", "center": "c", "right": "r"}
+# Task list checkboxes (amssymb), keyed by "done".
+_TASK_MARKS = {True: r"$\boxtimes$", False: r"$\square$"}
 
 
 def escape_latex(text: str) -> str:
@@ -192,6 +198,26 @@ class LatexRenderer:
             return self._code(el)
         if isinstance(el, ListElement):
             return self._list(el) + "\n" if el.items else ""
+        if isinstance(el, DefinitionList):
+            if not el.items:
+                return ""
+            # Braces keep a "]" in the term from ending the optional argument.
+            items = "".join(
+                f"\\item[{{{self._inline(term)}}}] {self._inline(definition)}\n"
+                for term, definition in el.items
+            )
+            return f"\\begin{{description}}\n{items}\\end{{description}}\n\n"
+        if isinstance(el, TaskList):
+            if not el.items:
+                return ""
+            items = "".join(
+                f"\\item[{_TASK_MARKS[done]}] {self._inline(text)}\n"
+                for done, text in el.items
+            )
+            return f"\\begin{{itemize}}\n{items}\\end{{itemize}}\n\n"
+        if isinstance(el, PageBreak):
+            # \clearpage also places any pending figures first.
+            return "\\clearpage\n\n"
         if isinstance(el, Table):
             return self._table(el)
         if isinstance(el, Figure):

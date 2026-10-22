@@ -10,7 +10,7 @@ This guide walks through every feature. For a terse signature-level listing, see
 2. [Sections](#sections)
 3. [Text and inline formatting](#text-and-inline-formatting) — including [footnotes](#footnotes)
 4. [Tables](#tables) — including [tables from data](#tables-from-data)
-5. [Lists](#lists)
+5. [Lists](#lists) — including [definition and task lists](#definition-lists-and-task-lists)
 6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules)
 7. [Figures](#figures) — including [numbering and cross-references](#numbering-and-cross-references)
 8. [Callouts](#callouts)
@@ -202,6 +202,30 @@ s.bullet_list([
 
 A nested list attaches to the item before it (indented in Markdown, placed inside the preceding `<li>` in HTML). In a numbered list, nested lists don't consume a number.
 
+### Definition lists and task lists
+
+```python
+s.definition_list([
+    ("API", "Application programming interface"),
+    ("SLA", ["Service level agreement — see ", link("the policy", "https://example.com/sla")]),
+])
+s.definition_list({"MRR": "Monthly recurring revenue"})   # a mapping works too
+
+s.task_list([
+    (True, "Write the docs"),
+    (False, ["Ship ", code("v1.0")]),
+])
+```
+
+Terms, definitions and task text accept inline formatting. Each entry must be a pair — `(term, definition)` or `(done, text)` with a `bool` first — or `ValueError` is raised. Empty lists render nothing.
+
+| Format | Definition list | Task list |
+| --- | --- | --- |
+| Markdown | `- **Term**: definition` (Markdown has no standard definition-list syntax; this reads well everywhere) | `- [x] Done` / `- [ ] To do` (GitHub task lists) |
+| HTML | `<dl>` with `<dt>` / `<dd>` | A list of disabled checkboxes |
+| LaTeX | `description` environment | `itemize` with ☒ / ☐ markers (`amssymb`) |
+| PDF | Bold term, indented definition | Drawn checkboxes (independent of the font) |
+
 ## Code blocks, quotes, images, rules
 
 ```python
@@ -213,6 +237,10 @@ s.horizontal_rule()
 
 - `language` becomes the fence info string in Markdown and a `language-*` class in HTML (ready for highlight.js/Prism if you add one via custom CSS/raw HTML).
 - If the code itself contains ` ``` `, the Markdown fence automatically widens so the block stays intact.
+
+### Page breaks
+
+`page_break()` starts a new page: a new page in PDF (skipped when already at the top of a page, so it never leaves a blank one), `\clearpage` in LaTeX (which also places pending figures first), and a break when the HTML is printed. Markdown has no pages; it gets an invisible `<div style="break-after: page">` that takes effect when the Markdown is converted to HTML and printed.
 
 ## Figures
 
@@ -334,7 +362,12 @@ html_text     = report.to_html()
 
 report.save_markdown("report.md")     # writes UTF-8, returns the Path
 report.save_html("report.html")
+
+report.save("report.pdf")             # format from the extension
+report.save("report.html", full_document=False)   # options go to save_html()
 ```
+
+`save(path, **options)` picks the format from the file extension — `.md` / `.markdown`, `.html` / `.htm`, `.tex`, `.pdf` (case-insensitive) — and passes any options to the matching `save_*` method. Other extensions raise `ValueError`.
 
 Generated figure images are embedded in HTML; `save_markdown()` writes them into a `report_files/` folder next to the file (see [Figures](#figures)).
 
@@ -444,6 +477,7 @@ Invalid input fails fast with `ValueError` at construction time:
 - table row width not matching the header count
 - unknown `align` value or wrong `align` length
 - unknown `raw` format
+- a definition-list entry that isn't a `(term, definition)` pair, or a task that isn't a `(done, text)` pair with a `bool` first
 - figure source that isn't a path, image bytes or plot; invalid `width`; invalid label, or a label without a caption
 
 Duplicate labels and `ref()` to an unknown label raise `ValueError` when the report is rendered.

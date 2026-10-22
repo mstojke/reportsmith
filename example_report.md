@@ -2,7 +2,7 @@
 
 *Platform team quarterly summary*  
 **Author:** Michal Stojke  
-**Date:** 2026-08-26  
+**Date:** 2026-10-22  
 
 ## Executive Summary
 
@@ -18,7 +18,7 @@ The platform team shipped **14 features** this quarter while reducing infrastruc
 | p95 latency | 410 ms | 290 ms | -29% |
 | Monthly cost | $48k | $39k | -18% |
 
-*Quarter-over-quarter platform metrics*
+*Table 1: Quarter-over-quarter platform metrics*
 
 ## Highlights
 

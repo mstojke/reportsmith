@@ -11,7 +11,8 @@ Everything documented here is importable from the top-level package:
 
    from reportsmith import (
        Report, Section,
-       Heading, Paragraph, Quote, CodeBlock, ListElement, Table, Image,
+       Heading, Paragraph, Quote, CodeBlock, ListElement, DefinitionList,
+       TaskList, PageBreak, Table, Image,
        HorizontalRule, Raw, TableOfContents, Callout, Figure,
        Inline, bold, italic, code, link, strike, sub, sup, footnote, ref,
        MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer,
@@ -89,6 +90,16 @@ Report
 
       Write the PDF export to *path* and return it (requires ``fpdf2``).
 
+   .. py:method:: save(path, **options) -> pathlib.Path
+
+      Write the report in the format given by *path*'s extension:
+      ``.md`` / ``.markdown`` (:meth:`save_markdown`), ``.html`` / ``.htm``
+      (:meth:`save_html`), ``.tex`` (:meth:`save_latex`) or ``.pdf``
+      (:meth:`save_pdf`), case-insensitively. *options* are passed to that
+      method.
+
+      :raises ValueError: for any other extension.
+
 Container (builder API)
 =======================
 
@@ -133,6 +144,18 @@ Container (builder API)
    .. py:method:: numbered_list(items) -> Container
 
       Add a :class:`ListElement` with ``ordered=True``.
+
+   .. py:method:: definition_list(items) -> Container
+
+      Add a :class:`DefinitionList`.
+
+   .. py:method:: task_list(items) -> Container
+
+      Add a :class:`TaskList`.
+
+   .. py:method:: page_break() -> Container
+
+      Add a :class:`PageBreak`.
 
    .. py:method:: table(headers, rows, caption="", align=None, label="") -> Container
 
@@ -212,6 +235,30 @@ render-agnostic.
    nested list attaches to the preceding item (indents in Markdown; goes
    inside the previous ``<li>`` in HTML) and does not consume a number in
    ordered lists.
+
+.. py:class:: DefinitionList(items)
+
+   *items* is a sequence of ``(term, definition)`` pairs or a mapping from
+   term to definition; both are ``TextLike``. Markdown: ``- **Term**:
+   definition``. HTML: ``<dl>``. LaTeX: ``description``. PDF: bold term
+   with the definition indented below.
+
+   :raises ValueError: for an entry that isn't a pair.
+
+.. py:class:: TaskList(items)
+
+   *items* is a sequence of ``(done, text)`` pairs: a ``bool`` and
+   ``TextLike``. Markdown: ``- [x]`` / ``- [ ]``. HTML: disabled
+   checkboxes in ``<ul class="task-list">``. LaTeX: ``itemize`` with
+   ``$\boxtimes$`` / ``$\square$`` (``amssymb``). PDF: drawn checkboxes.
+
+   :raises ValueError: for an entry that isn't a ``(bool, text)`` pair.
+
+.. py:class:: PageBreak()
+
+   PDF: a new page, unless already at the top of one. LaTeX:
+   ``\clearpage``. HTML: ``<div class="page-break">``, a break when
+   printed. Markdown: an invisible ``<div style="break-after: page">``.
 
 .. py:class:: Table(headers, rows, caption="", align=None, label="")
 
@@ -497,6 +544,8 @@ Heading level outside 1–6                            ``ValueError`` (construct
 Table row width mismatch                             ``ValueError`` (construction)
 Invalid or mis-sized ``align``                       ``ValueError`` (construction)
 Invalid ``Raw`` format                               ``ValueError`` (construction)
+Malformed definition-list or task-list entry         ``ValueError`` (construction)
+``save()`` with an unknown file extension            ``ValueError``
 ``TableOfContents`` depth outside 1–5                ``ValueError`` (construction)
 Invalid figure source, width or label                ``ValueError`` / ``TypeError``
 Label without a caption                              ``ValueError`` (construction)
