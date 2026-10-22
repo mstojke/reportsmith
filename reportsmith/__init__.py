@@ -26,6 +26,9 @@ from .elements import (
     HorizontalRule,
     Image,
     ListElement,
+    DefinitionList,
+    TaskList,
+    PageBreak,
     Paragraph,
     Quote,
     Raw,
@@ -39,7 +42,7 @@ from .renderers.html import HtmlRenderer
 from .renderers.pdf import PdfRenderer
 from .renderers.latex import LatexRenderer
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "Report",
@@ -49,6 +52,9 @@ __all__ = [
     "Table",
     "TableOfContents",
     "ListElement",
+    "DefinitionList",
+    "TaskList",
+    "PageBreak",
     "CodeBlock",
     "Image",
     "Figure",

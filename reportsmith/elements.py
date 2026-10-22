@@ -8,13 +8,14 @@ with the same methods.
 
 from __future__ import annotations
 
+import copy
 import io
 import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any, Iterable, Optional, Sequence, Union
 
-from .inline import InlineContent, TextLike, normalize
+from .inline import Inline, InlineContent, TextLike, normalize
 
 if TYPE_CHECKING:
     from .data import Formats, Headers
@@ -30,6 +31,9 @@ class Heading(Element):
             raise ValueError(f"Heading level must be 1-6, got {level}")
         self.parts: list[InlineContent] = normalize(content)
         self.level = level
+        # True when the level came from the container (heading() without a
+        # level); such headings follow their container when it is re-levelled.
+        self._auto_level = False
 
 
 class Paragraph(Element):
@@ -59,6 +63,36 @@ class ListElement(Element):
                 self.items.append(item)
             else:
                 self.items.append(normalize(item))
+
+
+class DefinitionList(Element):
+    """Terms with their definitions: a sequence of ``(term, definition)``
+    pairs, or a mapping from term to definition. Both are inline text."""
+
+    def __init__(self, items: Union[Mapping[Any, Any], Sequence[Sequence[Any]]]):
+        pairs = list(items.items()) if isinstance(items, Mapping) else list(items)
+        self.items: list[tuple[list[InlineContent], list[InlineContent]]] = []
+        for i, pair in enumerate(pairs):
+            if isinstance(pair, (str, bytes)) or len(pair) != 2:
+                raise ValueError(f"Definition {i} must be a (term, definition) pair")
+            term, definition = pair
+            self.items.append((normalize(term), normalize(definition)))
+
+
+class TaskList(Element):
+    """A checklist: a sequence of ``(done, text)`` pairs, where ``done`` is a
+    bool and ``text`` is inline text."""
+
+    def __init__(self, items: Sequence[Sequence[Any]]):
+        self.items: list[tuple[bool, list[InlineContent]]] = []
+        for i, pair in enumerate(items):
+            if isinstance(pair, (str, bytes)) or len(pair) != 2 or not isinstance(pair[0], bool):
+                raise ValueError(f"Task {i} must be a (done, text) pair with a bool first")
+            self.items.append((pair[0], normalize(pair[1])))
+
+
+class PageBreak(Element):
+    """Start a new page: in PDF and LaTeX, and when printing HTML."""
 
 
 class Table(Element):
@@ -254,6 +288,11 @@ class Figure(Element):
         self.width = width
         self.dpi = dpi
 
+    def __deepcopy__(self, memo: dict) -> "Figure":
+        # The source (a plot object or bytes) is shared, not copied:
+        # deep-copying a matplotlib figure is slow and unnecessary.
+        return copy.copy(self)
+
     def image_data(self, plot_format: str = "png") -> tuple[bytes, str]:
         """The image as ``(bytes, format)``; plots are rendered as ``plot_format``."""
         if self.kind == "path":
@@ -309,8 +348,45 @@ class Container(Element):
         self._level = 0  # heading depth of this container
 
     def add(self, element: Element) -> "Container":
-        """Append a pre-built element. Returns self for chaining."""
+        """Append a pre-built element. Returns self for chaining.
+
+        A section or callout (and everything in it) is re-levelled to fit
+        here, so a standalone ``Section`` gets the right heading level.
+        """
+        if isinstance(element, Container) and not isinstance(element, (Section, Callout)):
+            raise TypeError(f"Can't add a {type(element).__name__}; use extend() to merge its content")
+        _relevel(element, self._level)
         self.children.append(element)
+        return self
+
+    def extend(
+        self,
+        source: Union["Container", Iterable[Element]],
+        label_prefix: str = "",
+    ) -> "Container":
+        """Append copies of another report's, section's or callout's content
+        (or of a list of elements), re-levelled to fit here.
+
+        Copies are deep, so the same source can be merged into several
+        places. Tables of contents in a container source are skipped, since
+        a TOC already covers the report it ends up in. ``label_prefix`` is
+        prepended to every figure/table label in the copies and to the
+        ``ref()`` cross-references that point to them, to keep labels unique
+        when merging reports.
+        """
+        if label_prefix:
+            _check_label(label_prefix + "x", "x")  # same rules as labels
+        from_container = isinstance(source, Container)
+        elements = source.children if isinstance(source, Container) else list(source)
+        for element in elements:
+            if from_container and isinstance(element, TableOfContents):
+                continue
+            element = copy.deepcopy(element)
+            if from_container:
+                _drop_tocs(element)
+            if label_prefix:
+                _prefix_labels(element, label_prefix)
+            self.add(element)
         return self
 
     def section(self, title: TextLike) -> "Section":
@@ -321,7 +397,10 @@ class Container(Element):
 
     def heading(self, content: TextLike, level: Optional[int] = None) -> "Container":
         """Add a heading. Level defaults to one below this container's title."""
-        self.children.append(Heading(content, level or min(self._level + 1, 6)))
+        heading = Heading(content, level or min(self._level + 1, 6))
+        # Default-levelled headings move with their container when re-levelled.
+        heading._auto_level = level is None
+        self.children.append(heading)
         return self
 
     def paragraph(self, content: TextLike) -> "Container":
@@ -342,6 +421,23 @@ class Container(Element):
 
     def numbered_list(self, items: Sequence) -> "Container":
         self.children.append(ListElement(items, ordered=True))
+        return self
+
+    def definition_list(
+        self, items: Union[Mapping[Any, Any], Sequence[Sequence[Any]]]
+    ) -> "Container":
+        """Add a :class:`DefinitionList` of ``(term, definition)`` pairs or a mapping."""
+        self.children.append(DefinitionList(items))
+        return self
+
+    def task_list(self, items: Sequence[Sequence[Any]]) -> "Container":
+        """Add a :class:`TaskList` of ``(done, text)`` pairs."""
+        self.children.append(TaskList(items))
+        return self
+
+    def page_break(self) -> "Container":
+        """Add a :class:`PageBreak`."""
+        self.children.append(PageBreak())
         return self
 
     def table(
@@ -492,3 +588,59 @@ class Callout(Container):
 
     def __exit__(self, *exc_info) -> None:
         return None
+
+
+# -- merging helpers ---------------------------------------------------------
+
+
+def _relevel(element: Element, parent_level: int) -> None:
+    """Fit a section/callout subtree under a container at ``parent_level``."""
+    if isinstance(element, Section):
+        element._level = min(parent_level + 1, 6)
+    elif isinstance(element, Callout):
+        element._level = parent_level
+    elif isinstance(element, Heading) and getattr(element, "_auto_level", False):
+        element.level = min(parent_level + 1, 6)
+    if isinstance(element, (Section, Callout)):
+        for child in element.children:
+            _relevel(child, element._level)
+
+
+def _drop_tocs(element: Element) -> None:
+    if isinstance(element, Container):
+        element.children = [c for c in element.children if not isinstance(c, TableOfContents)]
+        for child in element.children:
+            _drop_tocs(child)
+
+
+def _prefix_labels(element: Element, prefix: str) -> None:
+    """Prefix figure/table labels, and the refs to them, in a subtree."""
+
+    def fix(parts: list) -> list:
+        return [
+            Inline(p.style, p.text, prefix + p.href)
+            if isinstance(p, Inline) and p.style == "ref" else p
+            for p in parts
+        ]
+
+    if isinstance(element, (Figure, Table)) and element.label:
+        element.label = prefix + element.label
+    if isinstance(element, (Heading, Paragraph, Quote)):
+        element.parts = fix(element.parts)
+    elif isinstance(element, Section):
+        element.title_parts = fix(element.title_parts)
+    elif isinstance(element, ListElement):
+        element.items = [item if isinstance(item, ListElement) else fix(item) for item in element.items]
+        for item in element.items:
+            if isinstance(item, ListElement):
+                _prefix_labels(item, prefix)
+    elif isinstance(element, Table):
+        element.headers = [fix(h) for h in element.headers]
+        element.rows = [[fix(cell) for cell in row] for row in element.rows]
+    elif isinstance(element, DefinitionList):
+        element.items = [(fix(term), fix(definition)) for term, definition in element.items]
+    elif isinstance(element, TaskList):
+        element.items = [(done, fix(text)) for done, text in element.items]
+    if isinstance(element, Container):
+        for child in element.children:
+            _prefix_labels(child, prefix)

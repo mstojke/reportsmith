@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-22
+
+### Added
+
+- Definition lists (`definition_list(items)`, `DefinitionList`) from
+  `(term, definition)` pairs or a mapping: `- **Term**: definition` in
+  Markdown, `<dl>` in HTML, `description` in LaTeX, and an indented layout
+  in PDF.
+- Task lists (`task_list(items)`, `TaskList`) from `(done, text)` pairs:
+  GitHub `- [x]` / `- [ ]` in Markdown, disabled checkboxes in HTML,
+  ☒ / ☐ in LaTeX, and drawn checkboxes in PDF.
+- Page breaks (`page_break()`, `PageBreak`): a new page in PDF (never a
+  blank one), `\clearpage` in LaTeX, and a print-only break in HTML.
+- `report.save(path, **options)`, which picks the format from the file
+  extension (`.md`, `.markdown`, `.html`, `.htm`, `.tex`, `.pdf`) and passes
+  options to the matching `save_*` method.
+- `examples/lists_example.py`, also compiled by the CI LaTeX job.
+- Report metadata: `Report(description=..., keywords=[...], language="en")`.
+  It goes into HTML `<meta>` tags and `lang`, PDF document properties
+  (subject, keywords, language, and `reportsmith <version>` as creator),
+  LaTeX `\hypersetup` PDF fields, and — with `front_matter=True` on
+  `to_markdown()` / `save_markdown()` — a YAML front matter block.
+- HTML themes: `to_html(theme="auto" | "light" | "dark")`;
+  `reportsmith.renderers.html.theme_css()` returns each stylesheet.
+- A print stylesheet in the default CSS: light colours, no figures,
+  tables, code blocks or callouts split across pages, headings kept with
+  their text, and external link addresses printed after the link.
+- Optional syntax highlighting (`highlight=True` on the HTML, LaTeX and PDF
+  exports), via Pygments as the new `highlight` extra
+  (`pip install reportsmith[highlight]`). Off by default; code blocks in
+  languages Pygments doesn't know stay plain.
+- `extend(source, label_prefix="")` copies another report's, section's or
+  callout's content (or a list of elements) into a container, re-levelled
+  to fit; the source's table of contents is skipped, and `label_prefix`
+  renames labels together with the `ref()`s pointing to them.
+- `examples/merge_example.py`, also compiled by the CI LaTeX job.
+
+### Changed
+
+- The `pdf` extra now requires `fpdf2>=2.8.4`, the oldest version CI
+  tests; older versions lack features the PDF renderer uses.
+- The LaTeX preamble loads `amssymb`, for the task list checkboxes.
+- `add()` now re-levels a `Section` or `Callout` (and its subsections and
+  default-levelled headings) to fit where it is added, so a section built
+  on its own gets the right heading level. Adding a `Report` raises
+  `TypeError`; use `extend()`.
+- The default stylesheet's colours are all CSS variables, including the
+  callout colours (`--note`, `--tip`, `--important`, `--warning`,
+  `--caution`), so a theme or a custom `:root` rule can change them.
+- A duplicate label error now suggests `extend(..., label_prefix=...)`.
+- The `dev` extra now includes Pygments.
+
 ## [0.5.0] - 2026-10-19
 
 ### Added

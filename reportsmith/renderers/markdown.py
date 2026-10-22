@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from html import escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Union
@@ -15,6 +16,9 @@ from ..elements import (
     HorizontalRule,
     Image,
     ListElement,
+    DefinitionList,
+    TaskList,
+    PageBreak,
     Paragraph,
     Quote,
     Raw,
@@ -45,9 +49,11 @@ class MarkdownRenderer:
         self,
         assets_dir: Optional[Union[str, Path]] = None,
         assets_url: Optional[str] = None,
+        front_matter: bool = False,
     ):
         self.assets_dir = assets_dir
         self.assets_url = assets_url
+        self.front_matter = front_matter
 
     def render(self, report: "Report") -> str:
         self._report = report
@@ -55,7 +61,8 @@ class MarkdownRenderer:
         self._assets = Assets(self.assets_dir, self.assets_url) if self.assets_dir is not None else None
         self._anchors = heading_anchors(report)
         self._footnotes: list[str] = []
-        blocks: list[str] = [f"# {report.title}"]
+        blocks: list[str] = [self._front_matter(report)] if self.front_matter else []
+        blocks.append(f"# {report.title}")
         meta = self._metadata_lines(report)
         if meta:
             blocks.append("\n".join(meta))
@@ -68,6 +75,21 @@ class MarkdownRenderer:
                 for n, text in enumerate(self._footnotes, start=1)
             ))
         return "\n\n".join(blocks) + "\n"
+
+    @staticmethod
+    def _front_matter(report: "Report") -> str:
+        # JSON strings and lists are valid YAML, and handle all quoting.
+        fields = [
+            ("title", report.title),
+            ("subtitle", report.subtitle),
+            ("author", report.author),
+            ("date", report.date),
+            ("description", report.description),
+            ("keywords", report.keywords),
+            ("lang", report.language),
+        ]
+        lines = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in fields if value]
+        return "---\n" + "\n".join(lines) + "\n---"
 
     def _metadata_lines(self, report: "Report") -> list[str]:
         lines = []
@@ -102,6 +124,19 @@ class MarkdownRenderer:
             return [f"{fence}{el.language}\n{el.source}\n{fence}"]
         if isinstance(el, ListElement):
             return ["\n".join(self._list_lines(el, indent=0))]
+        if isinstance(el, DefinitionList):
+            # Markdown has no standard definition-list syntax; a bulleted
+            # "**Term**: definition" reads well everywhere.
+            return ["\n".join(
+                f"- {self._term(term)}: {self._inline(definition)}" for term, definition in el.items
+            )] if el.items else []
+        if isinstance(el, TaskList):
+            return ["\n".join(
+                f"- [{'x' if done else ' '}] {self._inline(text)}" for done, text in el.items
+            )] if el.items else []
+        if isinstance(el, PageBreak):
+            # Invisible on GitHub; a page break where the HTML keeps styles.
+            return ['<div style="break-after: page"></div>']
         if isinstance(el, Table):
             return [self._table(el)]
         if isinstance(el, Figure):
@@ -159,6 +194,13 @@ class MarkdownRenderer:
         if el.caption:
             block += f"\n\n*{self._numbering.caption_label(el)}: {el.caption}*"
         return block
+
+    def _term(self, parts: list[InlineContent]) -> str:
+        text = self._inline(parts)
+        # Bolding a term that already contains bold would break the markers.
+        if any(isinstance(p, Inline) and p.style == "bold" for p in parts):
+            return text
+        return f"**{text}**"
 
     def _list_lines(self, el: ListElement, indent: int) -> list[str]:
         lines: list[str] = []

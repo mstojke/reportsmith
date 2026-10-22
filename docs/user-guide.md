@@ -6,12 +6,12 @@ This guide walks through every feature. For a terse signature-level listing, see
 
 ## Contents
 
-1. [Creating a report](#creating-a-report)
-2. [Sections](#sections)
+1. [Creating a report](#creating-a-report) — including [metadata](#metadata)
+2. [Sections](#sections) — including [reusing and merging content](#reusing-and-merging-content)
 3. [Text and inline formatting](#text-and-inline-formatting) — including [footnotes](#footnotes)
 4. [Tables](#tables) — including [tables from data](#tables-from-data)
-5. [Lists](#lists)
-6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules)
+5. [Lists](#lists) — including [definition and task lists](#definition-lists-and-task-lists)
+6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules) — including [syntax highlighting](#syntax-highlighting)
 7. [Figures](#figures) — including [numbering and cross-references](#numbering-and-cross-references)
 8. [Callouts](#callouts)
 9. [Table of contents](#table-of-contents)
@@ -47,6 +47,29 @@ All content methods return the container they were called on, so calls chain:
 report.paragraph("First.").paragraph("Second.").horizontal_rule()
 ```
 
+### Metadata
+
+Three more optional arguments describe the document rather than appear in it:
+
+```python
+report = Report(
+    "Q3 Sales Report",
+    author="Jane Doe",
+    description="Quarterly sales by region, with targets for Q4",
+    keywords=["sales", "quarterly", "EMEA"],
+    language="en",                  # default "en"; e.g. "pl", "de-CH"
+)
+```
+
+| Format | Where the metadata goes |
+| --- | --- |
+| HTML | `<html lang="...">` and `<meta>` tags for author, description, keywords, and generator (`reportsmith <version>`). |
+| PDF | Document properties: title, author, subject (the description), keywords, language, and creator. |
+| LaTeX | `\hypersetup` fields: `pdftitle`, `pdfauthor`, `pdfsubject`, `pdfkeywords`, `pdflang`. |
+| Markdown | Only with `to_markdown(front_matter=True)` / `save_markdown(..., front_matter=True)`: a YAML block at the top (`title`, `subtitle`, `author`, `date`, `description`, `keywords`, `lang`) for static-site generators such as Jekyll, Hugo, or MkDocs. |
+
+`keywords` must be a list (or other sequence) of strings; a single string raises `TypeError`.
+
 ## Sections
 
 `section(title)` adds a titled group of content. Sections nest to any depth, and the heading level is derived automatically from nesting depth: top-level sections render as `##` / `<h2>`, their children as `###` / `<h3>`, and so on (capped at level 6).
@@ -68,6 +91,39 @@ s.paragraph("Overall results were positive.")
 ```
 
 If you need an out-of-band heading (not tied to a section), use `heading(text, level=None)`; when `level` is omitted it defaults to one deeper than the container it's added to.
+
+### Reusing and merging content
+
+Build a section on its own and place it with `add()`; its heading level (and those of everything inside it) is fitted to where it lands:
+
+```python
+from reportsmith import Section
+
+disclaimer = Section("About this report")
+disclaimer.paragraph("Figures are unaudited.")
+disclaimer.heading("Contact")               # moves with the section
+
+report.add(disclaimer)                      # "About this report" becomes an h2
+```
+
+Headings added with `heading()` and no explicit `level` follow their section when it moves; headings with an explicit `level=` keep it.
+
+`extend(source)` copies in the content of another report, section, or callout — or a list of elements — at the depth of the container you call it on. Copies are deep, so the same source can be merged into several places:
+
+```python
+annual = Report("Annual Report")
+annual.toc()
+for name, quarterly in [("Q1", q1_report), ("Q2", q2_report)]:
+    with annual.section(name) as s:
+        s.extend(quarterly, label_prefix=f"{name.lower()}-")
+```
+
+Here each quarterly report's top-level sections become subsections of "Q1", "Q2", ... Merging details:
+
+- **Tables of contents** in a report or section you extend from are skipped (the TOC of the report you merge into already covers everything). A TOC in a plain list of elements is kept.
+- **Labels**: merging two reports that both label a table `"sales"` would duplicate the label (a `ValueError` at render time). `label_prefix="q1-"` renames every figure and table label in the copies to `q1-sales` etc. *and* updates the `ref()`s in the copied text that point to them, so references keep working.
+- **Figures** made from plot objects share the plot rather than copying it.
+- `add()` and `extend()` can't put sections into a callout (`TypeError`), and `add()` doesn't accept a whole `Report` — use `extend()` to merge its content.
 
 ## Text and inline formatting
 
@@ -202,6 +258,30 @@ s.bullet_list([
 
 A nested list attaches to the item before it (indented in Markdown, placed inside the preceding `<li>` in HTML). In a numbered list, nested lists don't consume a number.
 
+### Definition lists and task lists
+
+```python
+s.definition_list([
+    ("API", "Application programming interface"),
+    ("SLA", ["Service level agreement — see ", link("the policy", "https://example.com/sla")]),
+])
+s.definition_list({"MRR": "Monthly recurring revenue"})   # a mapping works too
+
+s.task_list([
+    (True, "Write the docs"),
+    (False, ["Ship ", code("v1.0")]),
+])
+```
+
+Terms, definitions and task text accept inline formatting. Each entry must be a pair — `(term, definition)` or `(done, text)` with a `bool` first — or `ValueError` is raised. Empty lists render nothing.
+
+| Format | Definition list | Task list |
+| --- | --- | --- |
+| Markdown | `- **Term**: definition` (Markdown has no standard definition-list syntax; this reads well everywhere) | `- [x] Done` / `- [ ] To do` (GitHub task lists) |
+| HTML | `<dl>` with `<dt>` / `<dd>` | A list of disabled checkboxes |
+| LaTeX | `description` environment | `itemize` with ☒ / ☐ markers (`amssymb`) |
+| PDF | Bold term, indented definition | Drawn checkboxes (independent of the font) |
+
 ## Code blocks, quotes, images, rules
 
 ```python
@@ -213,6 +293,32 @@ s.horizontal_rule()
 
 - `language` becomes the fence info string in Markdown and a `language-*` class in HTML (ready for highlight.js/Prism if you add one via custom CSS/raw HTML).
 - If the code itself contains ` ``` `, the Markdown fence automatically widens so the block stays intact.
+
+### Syntax highlighting
+
+Code blocks can be coloured with [Pygments](https://pygments.org/), an optional extra:
+
+```bash
+pip install reportsmith[highlight]
+```
+
+```python
+report.save_html("report.html", highlight=True)
+report.save_pdf("report.pdf", highlight=True)
+report.save_latex("report.tex", highlight=True)
+report.save("report.html", highlight=True)     # save() passes it on
+```
+
+Highlighting is off unless you ask for it, so output doesn't change depending on whether Pygments happens to be installed; with `highlight=True` and no Pygments, an `ImportError` explains how to install it. A block is coloured when its `language` is one Pygments knows (`"python"`, `"sql"`, `"bash"`, `"yaml"`, ...); other blocks stay plain.
+
+- **HTML** adds `<span>` tokens and their colours to the page's stylesheet — following the [theme](#customizing-the-html-output) (light colours in light mode and when printing, dark ones in dark mode). Token colours are added even when you pass your own `css`.
+- **LaTeX** uses Pygments' `Verbatim` output inside the same frame as plain code blocks, with its `\PY` macros in the preamble. With `full_document=False`, add `pygments.formatters.LatexFormatter().get_style_defs()` to your own preamble.
+- **PDF** colours tokens on the usual shaded background; long lines still wrap.
+- Markdown is unchanged: renderers such as GitHub already highlight fenced code by its language.
+
+### Page breaks
+
+`page_break()` starts a new page: a new page in PDF (skipped when already at the top of a page, so it never leaves a blank one), `\clearpage` in LaTeX (which also places pending figures first), and a break when the HTML is printed. Markdown has no pages; it gets an invisible `<div style="break-after: page">` that takes effect when the Markdown is converted to HTML and printed.
 
 ## Figures
 
@@ -334,7 +440,14 @@ html_text     = report.to_html()
 
 report.save_markdown("report.md")     # writes UTF-8, returns the Path
 report.save_html("report.html")
+
+report.save("report.pdf")             # format from the extension
+report.save("report.html", full_document=False)   # options go to save_html()
 ```
+
+`to_html()` / `save_html()` also take `theme=` and `highlight=` (see [Customizing the HTML output](#customizing-the-html-output) and [Syntax highlighting](#syntax-highlighting)); `to_markdown()` / `save_markdown()` take `front_matter=` (see [Metadata](#metadata)).
+
+`save(path, **options)` picks the format from the file extension — `.md` / `.markdown`, `.html` / `.htm`, `.tex`, `.pdf` (case-insensitive) — and passes any options to the matching `save_*` method. Other extensions raise `ValueError`.
 
 Generated figure images are embedded in HTML; `save_markdown()` writes them into a `report_files/` folder next to the file (see [Figures](#figures)).
 
@@ -415,7 +528,17 @@ Details and limitations:
 
 ## Customizing the HTML output
 
-The default stylesheet is a single CSS string, `reportsmith.renderers.html.DEFAULT_CSS`. It uses CSS variables and respects `prefers-color-scheme` for dark mode. To tweak rather than replace it, extend it:
+The default stylesheet comes in three colour **themes**:
+
+```python
+report.save_html("report.html")                  # theme="auto": follows the reader's light/dark setting
+report.save_html("report.html", theme="light")   # always light
+report.save_html("report.html", theme="dark")    # always dark
+```
+
+It also includes a **print stylesheet**: printing (or "Save as PDF" from a browser) always uses the light colours, avoids splitting figures, tables, code blocks, and callouts across pages, keeps headings with the text after them, honours `page_break()`, and prints the address after each external link.
+
+All colours are CSS variables (`--text`, `--muted`, `--border`, `--accent`, `--code-bg`, `--bg`, and the callout colours `--note`, `--tip`, `--important`, `--warning`, `--caution`). `reportsmith.renderers.html.theme_css(theme)` returns the stylesheet for a theme, and `DEFAULT_CSS` is the `"auto"` one. To tweak rather than replace it, extend it:
 
 ```python
 from reportsmith.renderers.html import DEFAULT_CSS
@@ -444,6 +567,7 @@ Invalid input fails fast with `ValueError` at construction time:
 - table row width not matching the header count
 - unknown `align` value or wrong `align` length
 - unknown `raw` format
+- a definition-list entry that isn't a `(term, definition)` pair, or a task that isn't a `(done, text)` pair with a `bool` first
 - figure source that isn't a path, image bytes or plot; invalid `width`; invalid label, or a label without a caption
 
 Duplicate labels and `ref()` to an unknown label raise `ValueError` when the report is rendered.

@@ -14,6 +14,9 @@ from ..elements import (
     HorizontalRule,
     Image,
     ListElement,
+    DefinitionList,
+    TaskList,
+    PageBreak,
     Paragraph,
     Quote,
     Raw,
@@ -22,6 +25,7 @@ from ..elements import (
     TableOfContents,
 )
 from ..assets import Assets, path_reference
+from ..highlight import latex_block, latex_style_defs, require_pygments
 from ..inline import Inline, InlineContent
 from ..numbering import LATEX_PREFIXES, KIND_NAMES, Numbering
 
@@ -43,6 +47,7 @@ DEFAULT_PREAMBLE = r"""\usepackage{iftex}
 \usepackage{booktabs}
 \usepackage{longtable}
 \usepackage{caption}
+\usepackage{amssymb}
 \usepackage{fancyvrb}
 \usepackage{xcolor}
 \usepackage[normalem]{ulem}
@@ -94,6 +99,10 @@ _SECTION_COMMANDS = {
     6: "subparagraph",
 }
 _ALIGN_SPEC = {"left": "l", "center": "c", "right": "r"}
+# Frame and size of code blocks, shared with highlighted (Pygments) blocks.
+_VERBATIM_OPTIONS = r"frame=single, framesep=2mm, fontsize=\small"
+# Task list checkboxes (amssymb), keyed by "done".
+_TASK_MARKS = {True: r"$\boxtimes$", False: r"$\square$"}
 
 
 def escape_latex(text: str) -> str:
@@ -132,9 +141,13 @@ class LatexRenderer:
         numbered: bool = False,
         assets_dir: Optional[Union[str, Path]] = None,
         assets_url: Optional[str] = None,
+        highlight: bool = False,
     ):
         self.assets_dir = assets_dir
         self.assets_url = assets_url
+        self.highlight = highlight
+        if highlight:
+            require_pygments()
         self.full_document = full_document
         self.document_class = document_class
         self.class_options = class_options
@@ -158,10 +171,17 @@ class LatexRenderer:
         if not self.numbered:
             # Unnumbered, but unlike \section* still in bookmarks/ToC.
             parts.append("\\setcounter{secnumdepth}{0}\n")
-        parts.append(
-            f"\\hypersetup{{pdftitle={{{escape_latex(report.title)}}}, "
-            f"pdfauthor={{{escape_latex(report.author)}}}}}\n"
-        )
+        fields = [
+            ("pdftitle", report.title),
+            ("pdfauthor", report.author),
+            ("pdfsubject", report.description),
+            ("pdfkeywords", ", ".join(report.keywords)),
+            ("pdflang", report.language),
+        ]
+        setup = ", ".join(f"{key}={{{escape_latex(value)}}}" for key, value in fields if value or key == "pdfauthor")
+        parts.append(f"\\hypersetup{{{setup}}}\n")
+        if self.highlight:
+            parts.append(latex_style_defs())
         if self.preamble:
             parts.append(self.preamble.rstrip("\n") + "\n")
         parts.append(
@@ -192,6 +212,26 @@ class LatexRenderer:
             return self._code(el)
         if isinstance(el, ListElement):
             return self._list(el) + "\n" if el.items else ""
+        if isinstance(el, DefinitionList):
+            if not el.items:
+                return ""
+            # Braces keep a "]" in the term from ending the optional argument.
+            items = "".join(
+                f"\\item[{{{self._inline(term)}}}] {self._inline(definition)}\n"
+                for term, definition in el.items
+            )
+            return f"\\begin{{description}}\n{items}\\end{{description}}\n\n"
+        if isinstance(el, TaskList):
+            if not el.items:
+                return ""
+            items = "".join(
+                f"\\item[{_TASK_MARKS[done]}] {self._inline(text)}\n"
+                for done, text in el.items
+            )
+            return f"\\begin{{itemize}}\n{items}\\end{{itemize}}\n\n"
+        if isinstance(el, PageBreak):
+            # \clearpage also places any pending figures first.
+            return "\\clearpage\n\n"
         if isinstance(el, Table):
             return self._table(el)
         if isinstance(el, Figure):
@@ -230,6 +270,13 @@ class LatexRenderer:
         return f"\\{cmd}[{{{short}}}]{{{title}}}\n\n"
 
     def _code(self, el: CodeBlock) -> str:
+        if self.highlight:
+            block = latex_block(el.source, el.language, _VERBATIM_OPTIONS)
+            if block is not None:
+                return block + "\n"
+        return self._plain_code(el)
+
+    def _plain_code(self, el: CodeBlock) -> str:
         # With commandchars, only \ { } need escaping, and an escaped
         # "\end{Verbatim}" in the source can no longer close the environment.
         source = el.source.translate(_VERBATIM_ESCAPE_TABLE)
