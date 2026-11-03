@@ -215,14 +215,19 @@ class Image(Element):
 _LABEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]*")
 
 
-def _check_label(label: str, caption: str) -> str:
-    if not label:
-        return ""
+def _check_label_format(label: str) -> str:
     if not _LABEL_RE.fullmatch(label):
         raise ValueError(
             f"Invalid label {label!r}: use letters, digits, '_', '.', ':' or '-', "
             "starting with a letter or digit"
         )
+    return label
+
+
+def _check_label(label: str, caption: str) -> str:
+    if not label:
+        return ""
+    _check_label_format(label)
     if not caption:
         raise ValueError(f"Label {label!r} needs a caption: only captioned items are numbered")
     return label
@@ -389,9 +394,10 @@ class Container(Element):
             self.add(element)
         return self
 
-    def section(self, title: TextLike) -> "Section":
-        """Add a nested section (usable as a context manager)."""
-        section = Section(title, level=self._level + 1)
+    def section(self, title: TextLike, label: str = "") -> "Section":
+        """Add a nested section (usable as a context manager). ``label``
+        lets :func:`~reportsmith.ref` refer to it ("Section 2.1")."""
+        section = Section(title, level=self._level + 1, label=label)
         self.children.append(section)
         return section
 
@@ -526,10 +532,12 @@ class Section(Container):
     exiting the context has no side effects.
     """
 
-    def __init__(self, title: TextLike, level: int = 1):
+    def __init__(self, title: TextLike, level: int = 1, label: str = ""):
         super().__init__()
         self.title_parts: list[InlineContent] = normalize(title)
         self._level = min(level, 6)
+        # Name for ref(); sections always have a title, so no caption needed.
+        self.label = _check_label_format(label) if label else ""
 
     def __enter__(self) -> "Section":
         return self
@@ -577,7 +585,7 @@ class Callout(Container):
             raise TypeError(f"A callout cannot contain a {type(element).__name__}")
         return super().add(element)
 
-    def section(self, title: TextLike) -> "Section":
+    def section(self, title: TextLike, label: str = "") -> "Section":
         raise TypeError("A callout cannot contain sections; use heading() instead")
 
     def toc(self, title: str = "Contents", depth: int = 3) -> "Container":
@@ -623,7 +631,7 @@ def _prefix_labels(element: Element, prefix: str) -> None:
             for p in parts
         ]
 
-    if isinstance(element, (Figure, Table)) and element.label:
+    if isinstance(element, (Figure, Table, Section)) and element.label:
         element.label = prefix + element.label
     if isinstance(element, (Heading, Paragraph, Quote)):
         element.parts = fix(element.parts)

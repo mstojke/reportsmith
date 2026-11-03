@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Running page headers and footers: `Report(header=..., footer=...)`, each
+  a string (centred) or a `(left, centre, right)` tuple with `{page}`,
+  `{pages}`, `{title}`, `{subtitle}`, `{author}` and `{date}`
+  placeholders. Rendered in PDF (page margins), LaTeX (`fancyhdr`, with
+  `lastpage` for `{pages}`) and printed HTML (`@page` margin boxes; see
+  `reportsmith.renderers.html.page_css()`). The header is left off the
+  first page.
+- Section numbering in every format: `Report(section_numbers=True)` (three
+  levels) or a depth 1–5 numbers sections and headings "1", "1.1", ... in
+  headings, tables of contents and PDF bookmarks, matching LaTeX.
+- Section labels: `section(title, label="...")`, so `ref()` can point to a
+  section ("Section 2.1", or the section's title when it isn't numbered).
+  `extend(..., label_prefix=...)` prefixes section labels too.
+- `examples/pages_example.py`, also compiled by the CI LaTeX job.
+
+### Changed
+
+- PDF output and printed HTML now show a centred page number by default
+  (`footer="{page}"`), as LaTeX already did. Pass `footer=None` to remove
+  it.
+- The LaTeX preamble now sets up the page style with `fancyhdr` and
+  `lastpage`, and always sets `secnumdepth` (`0` unnumbered, `3` with
+  `numbered=True`, or the `section_numbers` depth).
+- In LaTeX, headings inside callouts are unnumbered (starred), so they stay
+  out of the numbering and the table of contents, as in the other formats.
+
 ## [0.6.0] - 2026-10-22
 
 ### Added

@@ -41,6 +41,7 @@ from ..elements import (
 from ..highlight import pdf_tokens, require_pygments
 from ..inline import Inline, InlineContent
 from ..numbering import Numbering
+from ..page import segments
 from ..toc import collect_entries, find_tocs, plain_text
 
 if TYPE_CHECKING:
@@ -53,6 +54,8 @@ _TOC_TITLE_H = 10  # mm
 _TOC_ROW_H = 7
 _TOC_INDENT = 6
 _TOC_PAGE_W = 12  # width of the page-number column
+# Placeholder fpdf2 replaces with the total page count when the PDF is output.
+_PAGES_ALIAS = "{nb}"
 
 _TEXT = (31, 41, 55)
 _MUTED = (107, 114, 128)
@@ -148,17 +151,30 @@ class PdfRenderer:
                 "Install it with: pip install reportsmith[pdf]"
             ) from None
 
-        pdf = FPDF(format="A4")
+        renderer = self
+
+        class _Document(FPDF):
+            # fpdf2 calls these for every page.
+            def header(self) -> None:
+                renderer._page_band(self, report, report.header, top=True)
+
+            def footer(self) -> None:
+                renderer._page_band(self, report, report.footer, top=False)
+
+        pdf = _Document(format="A4")
+        pdf.alias_nb_pages(_PAGES_ALIAS)
         pdf.set_margins(PAGE_MARGIN, PAGE_MARGIN)
         pdf.set_auto_page_break(True, margin=PAGE_MARGIN)
         self._setup_fonts(pdf)
         # fpdf2 supports one TOC per document, so only the first is rendered.
+        self._numbering = Numbering(report)
         self._toc = next(find_tocs(report), None)
-        self._toc_entries = collect_entries(report, self._toc.depth) if self._toc else []
+        self._toc_entries = (
+            collect_entries(report, self._toc.depth, self._numbering) if self._toc else []
+        )
         self._toc_ids = {id(entry.element) for entry in self._toc_entries}
         self._toc_targets: dict[int, tuple[int, int]] = {}  # id -> (link, page)
         self._footnotes: list[tuple[str, int]] = []  # (text, link)
-        self._numbering = Numbering(report)
         self._ref_links: dict[str, int] = {}  # label -> fpdf link id
         pdf.add_page()
         from .. import __version__
@@ -209,6 +225,30 @@ class PdfRenderer:
             return text
         return text.encode("latin-1", "replace").decode("latin-1")
 
+    def _page_band(self, pdf, report: "Report", band, top: bool) -> None:
+        """Draw a running header (top) or footer (bottom) on the current page."""
+        if band is None or (top and pdf.page_no() == 1):
+            return  # the first page has the title block instead of a header
+        x, y_before = pdf.get_x(), pdf.get_y()
+        pdf.set_font(self.body_family, "", 8.5)
+        pdf.set_text_color(*_MUTED)
+        y = PAGE_MARGIN / 2 if top else pdf.h - PAGE_MARGIN + 6
+        for text, align in zip(band, "LCR"):
+            if not text:
+                continue
+            filled = "".join(
+                str(pdf.page_no()) if kind == "page" else _PAGES_ALIAS if kind == "pages" else value
+                for kind, value in segments(text, report)
+            )
+            pdf.set_xy(pdf.l_margin, y)
+            pdf.cell(pdf.epw, 5, self._t(filled), align=align)
+        if top:
+            pdf.set_xy(pdf.l_margin, pdf.t_margin)  # content starts below the header
+        else:
+            # Leave the cursor where it was: the TOC, drawn last into its
+            # reserved page, starts from it.
+            pdf.set_xy(x, y_before)
+
     def _title_block(self, pdf, report: "Report") -> None:
         pdf.set_text_color(*_TEXT)
         pdf.set_font(self.body_family, "B", 22)
@@ -233,15 +273,19 @@ class PdfRenderer:
         if isinstance(el, Section):
             self._keep_with_next(pdf)
             # PDF outline (bookmarks): top-level sections at outline level 0.
-            pdf.start_section(self._t(self._plain(el.title_parts)), level=el._level - 2)
+            number = self._numbering.section_number(el)
+            title = self._plain(el.title_parts)
+            pdf.start_section(self._t(f"{number} {title}" if number else title), level=el._level - 2)
             self._mark_toc_target(pdf, el)
-            self._heading(pdf, el.title_parts, el._level)
+            if el.label:
+                pdf.set_link(self._ref_link(pdf, el.label), y=pdf.get_y(), page=pdf.page_no())
+            self._heading(pdf, self._numbered(el, el.title_parts), el._level)
             for child in el.children:
                 self._element(pdf, child)
         elif isinstance(el, Heading):
             self._keep_with_next(pdf)
             self._mark_toc_target(pdf, el)
-            self._heading(pdf, el.parts, el.level)
+            self._heading(pdf, self._numbered(el, el.parts), el.level)
         elif isinstance(el, Paragraph):
             self._write_parts(pdf, el.parts, BODY_SIZE)
             pdf.ln(BODY_SIZE * 0.55)
@@ -328,6 +372,7 @@ class PdfRenderer:
                 pdf.add_page()
 
         assert self._toc is not None
+        pdf.set_x(pdf.l_margin)  # fpdf2 restores only the y of the reserved space
         pdf.set_text_color(*_TEXT)
         if self._toc.title:
             make_room(_TOC_TITLE_H)
@@ -340,7 +385,8 @@ class PdfRenderer:
             indent = _TOC_INDENT * (entry.depth - 1)
             name_w = pdf.epw - indent - _TOC_PAGE_W
             pdf.set_font(self.body_family, "B" if entry.depth == 1 else "", BODY_SIZE)
-            name = self._fit(pdf, self._t(plain_text(entry.parts)), name_w - 2)
+            text = plain_text(entry.parts)
+            name = self._fit(pdf, self._t(f"{entry.number} {text}" if entry.number else text), name_w - 2)
             pdf.set_x(pdf.l_margin + indent)
             pdf.cell(name_w, _TOC_ROW_H, name, link=link)
             pdf.cell(_TOC_PAGE_W, _TOC_ROW_H, str(page or ""), align="R", link=link,
@@ -389,6 +435,11 @@ class PdfRenderer:
         pdf.set_line_width(0.2)
         pdf.set_y(end_y)
         pdf.ln(2)
+
+    def _numbered(self, el: "Section | Heading", parts: list[InlineContent]) -> list[InlineContent]:
+        number = self._numbering.section_number(el)
+        prefix: list[InlineContent] = [f"{number} "] if number else []
+        return prefix + parts
 
     def _keep_with_next(self, pdf) -> None:
         # Avoid a heading orphaned at the bottom of a page.

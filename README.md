@@ -13,6 +13,8 @@ A small, dependency-free Python library for building reports programmatically an
 - Elements: headings, paragraphs, tables (with alignment and captions), bullet/numbered lists (nestable), definition lists, task lists, page breaks, code blocks, block quotes, images, horizontal rules, and format-specific raw passthrough
 - Inline formatting helpers: `bold()`, `italic()`, `code()`, `link()`, `strike()`, `sub()`, `sup()`, and numbered `footnote()`s — rendered natively in every format
 - Figures from image files, image bytes, or matplotlib plots, with numbered captions ("Figure 1", "Table 2") and `ref()` cross-references
+- Optional section numbering ("1", "1.1") in every format, with `ref()` to sections
+- Running page headers and footers with page numbers ("Page 3 of 12") in PDF, LaTeX, and printed HTML
 - Callouts (note, tip, important, warning, caution): GitHub alerts in Markdown, coloured boxes in HTML, LaTeX and PDF
 - Correct escaping everywhere: HTML entities, Markdown table pipes, code fences that widen when the source contains ` ``` `
 - HTML export ships with a clean embedded stylesheet — automatic, light, or dark theme, plus a print stylesheet — that you can extend or replace with your own CSS
@@ -91,7 +93,7 @@ Builder methods (all chainable, also available on sections):
 
 | Method | Adds |
 | --- | --- |
-| `section(title)` | Nested section; heading level tracks nesting depth. Usable as a context manager. |
+| `section(title, label="")` | Nested section; heading level tracks nesting depth. Usable as a context manager; `label` makes it referable with `ref()`. |
 | `heading(text, level=None)` | Explicit heading (level defaults to the container's depth + 1) |
 | `paragraph(content)` | Paragraph |
 | `quote(content)` | Block quote |
