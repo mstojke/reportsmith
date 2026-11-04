@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-04
+
 ### Added
 
 - An examples website on GitHub Pages (https://mstojke.github.io/reportsmith/):
