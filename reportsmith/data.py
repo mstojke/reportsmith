@@ -67,9 +67,13 @@ def build_table(
     missing: str = "",
     caption: str = "",
     label: str = "",
+    widths: Optional[Sequence[float]] = None,
+    striped: bool = False,
+    footer: Optional[Sequence[Any]] = None,
+    styles: Optional[Mapping[Any, Callable[[Any], Any]]] = None,
 ) -> "Table":
     """Shared core: select columns, format values and build a :class:`Table`."""
-    from .elements import Table
+    from .elements import Cell, Table
 
     if columns is not None:
         unknown = [c for c in columns if c not in keys]
@@ -100,14 +104,35 @@ def build_table(
     if align is None:
         align = ["right" if _numeric_column(values) else "left" for values in columns_values]
 
-    cells = [
+    # Formatted text, replaced by a Cell where a style function applies.
+    cells: list[list[Any]] = [
         [
             _format(value, per_column.get(key), default_format, missing)
             for key, value in zip(keys, row)
         ]
         for row in rows
     ]
-    return Table(labels, cells, caption=caption, align=align, label=label)
+    if styles:
+        _check_keys(styles, keys, "styles")
+        # A style function sees the raw value and returns Cell options
+        # (color/background/bold) or None; missing values aren't styled.
+        for row, row_cells in zip(rows, cells):
+            for j, key in enumerate(keys):
+                function = styles.get(key)
+                if function is None or is_missing(row[j]):
+                    continue
+                options = function(row[j])
+                if options:
+                    if not isinstance(options, Mapping):
+                        raise TypeError(
+                            f"styles[{key!r}] must return a dict of Cell options or None, "
+                            f"got {type(options).__name__}"
+                        )
+                    row_cells[j] = Cell(row_cells[j], **options)
+    return Table(
+        labels, cells, caption=caption, align=align, label=label,
+        widths=widths, striped=striped, footer=footer,
+    )
 
 
 def from_records(

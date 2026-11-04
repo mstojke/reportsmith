@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 
 from ..elements import (
     Callout,
+    CellStyle,
     CodeBlock,
     Element,
     Figure,
@@ -25,9 +26,11 @@ from ..elements import (
     TableOfContents,
 )
 from ..assets import data_uri, path_reference
+from ..colors import BACKGROUND_COLORS, DARK_BACKGROUND_COLORS, DARK_TEXT_COLORS, TEXT_COLORS
 from ..highlight import html_css as highlight_css, html_spans, require_pygments
 from ..inline import Inline, InlineContent
-from ..numbering import Numbering
+from ..numbering import HTML_PREFIXES, Numbering, iter_elements
+from ..page import segments
 from ..toc import TocEntry, build_tree, collect_entries, find_tocs, heading_anchors
 
 if TYPE_CHECKING:
@@ -45,7 +48,8 @@ _LIGHT_VARS = """\
   --important: #7c3aed;
   --warning: #b45309;
   --caution: #b91c1c;
-"""
+  --stripe: #f8f9fb;
+""" + "".join(f"  --cell-{n}: {TEXT_COLORS[n]};\n  --cell-bg-{n}: {BACKGROUND_COLORS[n]};\n" for n in TEXT_COLORS)
 _DARK_VARS = """\
   --text: #e5e7eb;
   --muted: #9ca3af;
@@ -58,7 +62,8 @@ _DARK_VARS = """\
   --important: #a78bfa;
   --warning: #fbbf24;
   --caution: #f87171;
-"""
+  --stripe: #182231;
+""" + "".join(f"  --cell-{n}: {DARK_TEXT_COLORS[n]};\n  --cell-bg-{n}: {DARK_BACKGROUND_COLORS[n]};\n" for n in TEXT_COLORS)
 _BASE_CSS = """\
 body {
   margin: 0 auto;
@@ -112,7 +117,13 @@ figure img { max-width: 100%; }
 figcaption, caption { color: var(--muted); font-size: 0.85rem; }
 figcaption { margin-top: 0.4em; }
 .caption-label { font-weight: 600; }
-"""
+table.striped tbody tr:nth-child(even) { background: var(--stripe); }
+tfoot td { font-weight: 600; border-top: 2px solid var(--muted); }
+td.cell-bold { font-weight: 600; }
+""" + "".join(
+    f".cell-{n} {{ color: var(--cell-{n}); }}\n.cell-bg-{n} {{ background: var(--cell-bg-{n}); }}\n"
+    for n in TEXT_COLORS
+)
 # Printing always uses the light colours, keeps blocks whole where it can,
 # and shows the target of external links.
 _PRINT_CSS = (
@@ -149,6 +160,47 @@ def theme_css(theme: str = "auto") -> str:
     else:
         root = ":root {\n" + (_LIGHT_VARS if theme == "light" else _DARK_VARS) + "}\n"
     return root + _BASE_CSS + _PRINT_CSS
+
+
+_BOX_STYLE = (
+    'font: 9pt -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; '
+    "color: #6b7280;"
+)
+
+
+def _css_string(text: str) -> str:
+    # "<" is escaped too, so a header can't close the <style> element.
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\A ").replace("<", "\\3C ")
+    return f'"{escaped}"'
+
+
+def page_css(report: "Report") -> str:
+    """``@page`` rules for the report's running header and footer.
+
+    Margin boxes print in Chromium-based browsers and paged-media tools
+    (WeasyPrint, Paged.js, Prince); other browsers ignore them.
+    """
+    boxes = []
+    for band, edge in ((report.header, "top"), (report.footer, "bottom")):
+        if band is None:
+            continue
+        for text, position in zip(band, ("left", "center", "right")):
+            if not text:
+                continue
+            content = " ".join(
+                {"page": "counter(page)", "pages": "counter(pages)"}.get(kind) or _css_string(value)
+                for kind, value in segments(text, report)
+            )
+            boxes.append(f"  @{edge}-{position} {{ content: {content}; {_BOX_STYLE} }}\n")
+    if not boxes:
+        return ""
+    css = "@page {\n  margin: 20mm 18mm;\n" + "".join(boxes) + "}\n"
+    if report.header is not None:
+        # The first page has the title block instead of a header.
+        css += "@page :first {\n" + "".join(
+            f"  @top-{position} {{ content: none; }}\n" for position in ("left", "center", "right")
+        ) + "}\n"
+    return css
 
 
 #: The default stylesheet (automatic light/dark theme).
@@ -201,7 +253,7 @@ class HtmlRenderer:
             '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
             f"{meta_tags}"
             f"<title>{escape(report.title)}</title>\n"
-            f"<style>\n{self.css}</style>\n"
+            f"<style>\n{self.css}{page_css(report)}</style>\n"
             "</head>\n<body>\n"
             f"{body}"
             "</body>\n</html>\n"
@@ -209,9 +261,14 @@ class HtmlRenderer:
 
     def _body(self, report: "Report") -> str:
         self._report = report
-        # Headings only get ids when there is a TOC to link to them, so
-        # output for reports without one is unchanged.
-        self._anchors = heading_anchors(report) if any(find_tocs(report)) else {}
+        self._numbering = Numbering(report)
+        # Headings only get ids when there is a TOC or a ref() to link to
+        # them, so output for other reports is unchanged.
+        has_toc = any(find_tocs(report))
+        self._anchors = heading_anchors(report, self._numbering) if has_toc else {}
+        for el in iter_elements(report):
+            if isinstance(el, Section) and el.label:
+                self._anchors[id(el)] = f"sec-{el.label}"
         parts = [f"<h1>{escape(report.title)}</h1>\n"]
         meta = []
         if report.subtitle:
@@ -223,7 +280,6 @@ class HtmlRenderer:
         if meta:
             parts.append('<div class="report-meta">\n' + "\n".join(meta) + "\n</div>\n")
         self._footnotes: list[str] = []
-        self._numbering = Numbering(report)
         for child in report.children:
             parts.append(self._render_element(child))
         if self._footnotes:
@@ -241,11 +297,11 @@ class HtmlRenderer:
     def _render_element(self, el: Element) -> str:
         if isinstance(el, Section):
             level = el._level
-            out = [f"<h{level}{self._id(el)}>{self._inline(el.title_parts)}</h{level}>\n"]
+            out = [f"<h{level}{self._id(el)}>{self._numbered(el, el.title_parts)}</h{level}>\n"]
             out.extend(self._render_element(child) for child in el.children)
             return "".join(out)
         if isinstance(el, Heading):
-            return f"<h{el.level}{self._id(el)}>{self._inline(el.parts)}</h{el.level}>\n"
+            return f"<h{el.level}{self._id(el)}>{self._numbered(el, el.parts)}</h{el.level}>\n"
         if isinstance(el, Paragraph):
             return f"<p>{self._inline(el.parts)}</p>\n"
         if isinstance(el, Quote):
@@ -301,6 +357,11 @@ class HtmlRenderer:
             return "".join(out)
         raise TypeError(f"Cannot render element of type {type(el).__name__}")
 
+    def _numbered(self, el: "Section | Heading", parts: list[InlineContent]) -> str:
+        number = self._numbering.section_number(el)
+        text = self._inline(parts)
+        return f'<span class="section-number">{number}</span> {text}' if number else text
+
     def _id(self, el: Element) -> str:
         anchor = self._anchors.get(id(el))
         return f' id="{escape(anchor, quote=True)}"' if anchor else ""
@@ -322,14 +383,15 @@ class HtmlRenderer:
                     for p in entry.parts
                     if not (isinstance(p, Inline) and p.style == "footnote")
                 ]
-                out.append(f'<li><a href="#{anchor}">{self._inline(parts)}</a>')
+                number = f'<span class="section-number">{entry.number}</span> ' if entry.number else ""
+                out.append(f'<li><a href="#{anchor}">{number}{self._inline(parts)}</a>')
                 if entry.children:
                     out.append("\n")
                     walk(entry.children)
                 out.append("</li>\n")
             out.append("</ul>\n")
 
-        entries = build_tree(collect_entries(self._report, el.depth))
+        entries = build_tree(collect_entries(self._report, el.depth, self._numbering))
         if entries:
             walk(entries)
         out.append("</nav>\n")
@@ -378,20 +440,47 @@ class HtmlRenderer:
         return "".join(out)
 
     def _table(self, el: Table) -> str:
-        out = [f"<table{self._target_id(el)}>\n"]
+        cls = ' class="striped"' if el.striped else ""
+        out = [f"<table{self._target_id(el)}{cls}>\n"]
         if el.caption:
             out.append(f"<caption>{self._caption(el)}</caption>\n")
+        if el.widths:
+            out.append("<colgroup>")
+            out.extend(f'<col style="width:{w * 100:.4g}%">' for w in el.widths)
+            out.append("</colgroup>\n")
         out.append("<thead>\n<tr>")
         for header, align in zip(el.headers, el.align):
             out.append(f'<th style="text-align:{align}">{self._inline(header)}</th>')
         out.append("</tr>\n</thead>\n<tbody>\n")
-        for row in el.rows:
+        for i, row in enumerate(el.rows):
             out.append("<tr>")
-            for cell, align in zip(row, el.align):
-                out.append(f'<td style="text-align:{align}">{self._inline(cell)}</td>')
+            for j, (cell, align) in enumerate(zip(row, el.align)):
+                out.append(self._td(cell, align, el.style_at(i, j)))
             out.append("</tr>\n")
-        out.append("</tbody>\n</table>\n")
+        out.append("</tbody>\n")
+        if el.footer is not None:
+            out.append("<tfoot>\n<tr>")
+            for j, (cell, align) in enumerate(zip(el.footer, el.align)):
+                out.append(self._td(cell, align, el.footer_styles.get(j, CellStyle())))
+            out.append("</tr>\n</tfoot>\n")
+        out.append("</table>\n")
         return "".join(out)
+
+    def _td(self, parts: list[InlineContent], align: str, style: CellStyle) -> str:
+        # Named colours are classes, so they follow the theme; hex values
+        # are inline styles.
+        classes, css = [], [f"text-align:{align}"]
+        if style.bold:
+            classes.append("cell-bold")
+        for value, prefix, prop in ((style.color, "cell-", "color"), (style.background, "cell-bg-", "background")):
+            if value is None:
+                continue
+            if value.startswith("#"):
+                css.append(f"{prop}:{value}")
+            else:
+                classes.append(prefix + value)
+        cls = f' class="{" ".join(classes)}"' if classes else ""
+        return f'<td{cls} style="{";".join(css)}">{self._inline(parts)}</td>'
 
     # -- inline ----------------------------------------------------------
 
@@ -420,7 +509,7 @@ class HtmlRenderer:
             return f"<{span.style}>{text}</{span.style}>"
         if span.style == "ref":
             kind, _ = self._numbering.resolve(span.href)
-            prefix = "fig" if kind == "figure" else "tbl"
+            prefix = HTML_PREFIXES[kind]
             text = escape(self._numbering.ref_text(span.href, span.text))
             return f'<a href="#{prefix}-{escape(span.href, quote=True)}" class="ref">{text}</a>'
         if span.style == "footnote":

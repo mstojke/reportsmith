@@ -59,7 +59,7 @@ class MarkdownRenderer:
         self._report = report
         self._numbering = Numbering(report)
         self._assets = Assets(self.assets_dir, self.assets_url) if self.assets_dir is not None else None
-        self._anchors = heading_anchors(report)
+        self._anchors = heading_anchors(report, self._numbering)
         self._footnotes: list[str] = []
         blocks: list[str] = [self._front_matter(report)] if self.front_matter else []
         blocks.append(f"# {report.title}")
@@ -105,12 +105,12 @@ class MarkdownRenderer:
 
     def _render_element(self, el: Element) -> list[str]:
         if isinstance(el, Section):
-            blocks = [f"{'#' * el._level} {self._inline(el.title_parts)}"]
+            blocks = [f"{'#' * el._level} {self._numbered(el, el.title_parts)}"]
             for child in el.children:
                 blocks.extend(self._render_element(child))
             return blocks
         if isinstance(el, Heading):
-            return [f"{'#' * el.level} {self._inline(el.parts)}"]
+            return [f"{'#' * el.level} {self._numbered(el, el.parts)}"]
         if isinstance(el, Paragraph):
             return [self._inline(el.parts)]
         if isinstance(el, Quote):
@@ -175,11 +175,13 @@ class MarkdownRenderer:
             for entry in entries:
                 # Plain text: inline markup can't nest inside link text.
                 text = plain_text(entry.parts).replace("[", r"\[").replace("]", r"\]")
+                if entry.number:
+                    text = f"{entry.number} {text}"
                 anchor = self._anchors[id(entry.element)]
                 lines.append(f"{'  ' * indent}- [{text}](#{anchor})")
                 walk(entry.children, indent + 1)
 
-        walk(build_tree(collect_entries(self._report, el.depth)), 0)
+        walk(build_tree(collect_entries(self._report, el.depth, self._numbering)), 0)
         if lines:
             blocks.append("\n".join(lines))
         return blocks
@@ -194,6 +196,11 @@ class MarkdownRenderer:
         if el.caption:
             block += f"\n\n*{self._numbering.caption_label(el)}: {el.caption}*"
         return block
+
+    def _numbered(self, el: "Section | Heading", parts: list[InlineContent]) -> str:
+        number = self._numbering.section_number(el)
+        text = self._inline(parts)
+        return f"{number} {text}" if number else text
 
     def _term(self, parts: list[InlineContent]) -> str:
         text = self._inline(parts)
@@ -220,10 +227,20 @@ class MarkdownRenderer:
             # Pipes break table syntax; newlines become <br> inside cells.
             return self._inline(parts).replace("|", "\\|").replace("\n", "<br>")
 
+        def styled(parts: list[InlineContent], bold: bool) -> str:
+            # Markdown can show bold, but not colours or backgrounds.
+            text = cell(parts)
+            return self._term(parts).replace("|", "\\|").replace("\n", "<br>") if bold and text else text
+
         lines = ["| " + " | ".join(cell(h) for h in el.headers) + " |"]
         lines.append("| " + " | ".join(_ALIGN_MARKERS[a] for a in el.align) + " |")
-        for row in el.rows:
-            lines.append("| " + " | ".join(cell(c) for c in row) + " |")
+        for i, row in enumerate(el.rows):
+            lines.append("| " + " | ".join(
+                styled(c, el.style_at(i, j).bold) for j, c in enumerate(row)
+            ) + " |")
+        if el.footer is not None:
+            # No footer syntax in Markdown: a bold last row.
+            lines.append("| " + " | ".join(styled(c, True) for c in el.footer) + " |")
         table = "\n".join(lines)
         if el.caption:
             table += f"\n\n*{self._numbering.caption_label(el)}: {el.caption}*"

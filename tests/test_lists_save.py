@@ -192,7 +192,7 @@ class TestSave:
         html = build().save(tmp_path / "r.html", full_document=False).read_text(encoding="utf-8")
         assert html.startswith("<h1>T</h1>")
         tex = build().save(tmp_path / "r.tex", numbered=True).read_text(encoding="utf-8")
-        assert "secnumdepth" not in tex
+        assert "\\setcounter{secnumdepth}{3}" in tex
 
     def test_figure_assets_follow_save(self, tmp_path):
         r = report()

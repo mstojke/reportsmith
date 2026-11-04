@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-04
+
+### Added
+
+- Running page headers and footers: `Report(header=..., footer=...)`, each
+  a string (centred) or a `(left, centre, right)` tuple with `{page}`,
+  `{pages}`, `{title}`, `{subtitle}`, `{author}` and `{date}`
+  placeholders. Rendered in PDF (page margins), LaTeX (`fancyhdr`, with
+  `lastpage` for `{pages}`) and printed HTML (`@page` margin boxes; see
+  `reportsmith.renderers.html.page_css()`). The header is left off the
+  first page.
+- Section numbering in every format: `Report(section_numbers=True)` (three
+  levels) or a depth 1–5 numbers sections and headings "1", "1.1", ... in
+  headings, tables of contents and PDF bookmarks, matching LaTeX.
+- Section labels: `section(title, label="...")`, so `ref()` can point to a
+  section ("Section 2.1", or the section's title when it isn't numbered).
+  `extend(..., label_prefix=...)` prefixes section labels too.
+- `examples/pages_example.py`, also compiled by the CI LaTeX job.
+- Table styling, on `table()`, `Table` and the `table_from_*` helpers:
+  `widths=` (relative column widths), `striped=True` (shaded alternate
+  rows) and `footer=` (a bold totals row, `<tfoot>` in HTML).
+- Styled cells: `Cell(content, color=..., background=..., bold=...)` in
+  table rows and footers, with named colours (`red`, `green`, `amber`,
+  `blue`, `gray`) that follow the HTML theme, or hex values. Markdown shows
+  the bold only.
+- `styles=` for tables built from data: per-column functions that style
+  cells from their raw values (e.g. negative numbers in red).
+- `examples/table_styling_example.py`, also compiled by the CI LaTeX job.
+
+### Changed
+
+- PDF output and printed HTML now show a centred page number by default
+  (`footer="{page}"`), as LaTeX already did. Pass `footer=None` to remove
+  it.
+- The LaTeX preamble now sets up the page style with `fancyhdr` and
+  `lastpage`, and always sets `secnumdepth` (`0` unnumbered, `3` with
+  `numbered=True`, or the `section_numbers` depth).
+- In LaTeX, headings inside callouts are unnumbered (starred), so they stay
+  out of the numbering and the table of contents, as in the other formats.
+- The LaTeX preamble also loads `array` and `colortbl`, for column widths
+  and cell colours. The HTML stylesheet has variables for the table colours
+  (`--stripe`, `--cell-<name>`, `--cell-bg-<name>`) in every theme.
+
 ## [0.6.0] - 2026-10-22
 
 ### Added

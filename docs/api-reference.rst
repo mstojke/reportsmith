@@ -13,7 +13,7 @@ Everything documented here is importable from the top-level package:
        Report, Section,
        Heading, Paragraph, Quote, CodeBlock, ListElement, DefinitionList,
        TaskList, PageBreak, Table, Image,
-       HorizontalRule, Raw, TableOfContents, Callout, Figure,
+       HorizontalRule, Raw, TableOfContents, Callout, Figure, Cell,
        Inline, bold, italic, code, link, strike, sub, sup, footnote, ref,
        MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer,
    )
@@ -30,7 +30,7 @@ Type aliases
 Report
 ======
 
-.. py:class:: Report(title, author="", date=None, subtitle="", description="", keywords=(), language="en")
+.. py:class:: Report(title, author="", date=None, subtitle="", description="", keywords=(), language="en", header=None, footer="{page}", section_numbers=False)
 
    Top-level container.
 
@@ -48,7 +48,18 @@ Report
       PDF keywords, LaTeX ``pdfkeywords``, Markdown front matter.
    :param str language: Language tag: HTML ``lang``, PDF language, LaTeX
       ``pdflang``, Markdown front matter ``lang``.
+   :param header: Running header for PDF, LaTeX and printed HTML: a string
+      (centred) or a ``(left, centre, right)`` tuple, with ``{page}``,
+      ``{pages}``, ``{title}``, ``{subtitle}``, ``{author}`` and ``{date}``
+      placeholders. Not shown on the first page.
+   :param footer: Running footer, same form; default ``"{page}"`` (a centred
+      page number). ``None`` for none.
+   :param section_numbers: ``True`` numbers sections and headings three
+      levels deep ("1", "1.1", "1.1.1") in every format; an int 1–5 sets the
+      depth; ``False`` (default) leaves them unnumbered.
    :raises TypeError: if *keywords* is a single string.
+   :raises ValueError: for an invalid header/footer template or numbering
+      depth.
 
    Inherits the full builder API from :class:`Container` and adds the
    export methods below.
@@ -131,10 +142,11 @@ Container (builder API)
 
       The elements added so far, in order.
 
-   .. py:method:: section(title) -> Section
+   .. py:method:: section(title, label="") -> Section
 
       Add a nested :class:`Section`. Returns the *new* section (not the
-      container), usable as a context manager.
+      container), usable as a context manager. *label* lets :func:`ref`
+      refer to it.
 
    .. py:method:: heading(content, level=None) -> Container
 
@@ -173,7 +185,7 @@ Container (builder API)
 
       Add a :class:`PageBreak`.
 
-   .. py:method:: table(headers, rows, caption="", align=None, label="") -> Container
+   .. py:method:: table(headers, rows, caption="", align=None, label="", widths=None, striped=False, footer=None) -> Container
 
       Add a :class:`Table`.
 
@@ -242,7 +254,7 @@ Elements
 All elements subclass ``reportsmith.elements.Element`` and are
 render-agnostic.
 
-.. py:class:: Section(title, level=1)
+.. py:class:: Section(title, level=1, label="")
 
    Titled container; includes the full builder API from
    :class:`Container`. ``__enter__``/``__exit__`` are no-ops so it can be
@@ -297,7 +309,7 @@ render-agnostic.
    ``\clearpage``. HTML: ``<div class="page-break">``, a break when
    printed. Markdown: an invisible ``<div style="break-after: page">``.
 
-.. py:class:: Table(headers, rows, caption="", align=None, label="")
+.. py:class:: Table(headers, rows, caption="", align=None, label="", widths=None, striped=False, footer=None)
 
    :param headers: ``Sequence[TextLike]`` — one entry per column.
    :param rows: ``Sequence[Sequence[TextLike]]``.
@@ -307,8 +319,18 @@ render-agnostic.
    :param align: One of ``"left"``, ``"center"``, ``"right"`` per column;
       default all-left.
    :param str label: Name for :func:`ref`; requires a caption.
+   :param widths: Relative column widths, one positive number per column;
+      stored as fractions in ``widths``.
+   :param bool striped: Shade every other body row.
+   :param footer: A totals row (one cell per column), bold and set apart;
+      cells may be :class:`Cell`.
+   :raises TypeError: for a :class:`Cell` among the headers.
    :raises ValueError: for row-width mismatch, wrong ``align`` length, an
       invalid ``align`` value, or an invalid label / label without caption.
+
+   Row and footer cells may be :class:`Cell` objects for styling; plain
+   cells are unstyled. ``style_at(row, column)`` returns a body cell's
+   :class:`CellStyle`, ``footer_styles`` maps footer columns to theirs.
 
    Markdown cells escape ``|`` and turn embedded newlines into ``<br>``.
 
@@ -328,18 +350,22 @@ render-agnostic.
       ``NaT``; default ``""``.
    :param str caption: As above.
    :param str label: As above.
+   :param widths, striped, footer: As above.
+   :param styles: Mapping from column key to a function of the raw
+      (unformatted) value returning ``Cell`` options (``{"color": "red",
+      "bold": True}``) or ``None``. Not called for missing values.
    :raises ValueError: for column names in ``columns``, ``headers`` or
       ``formats`` that don't exist, or a ``headers`` sequence of the wrong
       length.
 
-   .. py:classmethod:: from_records(records, columns=None, *, headers=None, formats=None, align=None, missing="", caption="", label="") -> Table
+   .. py:classmethod:: from_records(records, columns=None, *, headers=None, formats=None, align=None, missing="", caption="", label="", widths=None, striped=False, footer=None, styles=None) -> Table
 
       Rows from an iterable of mappings. Columns default to the union of
       keys in first-seen order; keys absent from a record are missing.
 
       :raises TypeError: if a record is not a mapping.
 
-   .. py:classmethod:: from_csv(source, columns=None, *, delimiter=",", encoding="utf-8", parse_numbers=True, headers=None, formats=None, align=None, missing="", caption="", label="") -> Table
+   .. py:classmethod:: from_csv(source, columns=None, *, delimiter=",", encoding="utf-8", parse_numbers=True, headers=None, formats=None, align=None, missing="", caption="", label="", widths=None, striped=False, footer=None, styles=None) -> Table
 
       Rows from a CSV file path or open text file; the first row is the
       header. With ``parse_numbers``, a column whose values all parse as
@@ -349,7 +375,7 @@ render-agnostic.
 
       :raises ValueError: for empty input or a row with too many fields.
 
-   .. py:classmethod:: from_dataframe(df, columns=None, *, index=False, headers=None, formats=None, align=None, missing="", caption="", label="") -> Table
+   .. py:classmethod:: from_dataframe(df, columns=None, *, index=False, headers=None, formats=None, align=None, missing="", caption="", label="", widths=None, striped=False, footer=None, styles=None) -> Table
 
       Rows from a pandas DataFrame (or any object with ``columns`` and
       ``itertuples()``); pandas is not imported. ``index=True`` prepends the
@@ -386,6 +412,29 @@ render-agnostic.
 
       The image as ``(bytes, format)``; plots are rendered as
       *plot_format*.
+
+.. py:class:: Cell(content, color=None, background=None, bold=False)
+
+   A styled table cell, usable in a table's rows and footer (not headers).
+
+   :param content: ``TextLike``.
+   :param color: Text colour: ``"red"``, ``"green"``, ``"amber"``,
+      ``"blue"``, ``"gray"`` (or ``"grey"``), or a hex value such as
+      ``"#7c3aed"`` or ``"#eef"``.
+   :param background: Background colour, same choices; names use pale
+      tints.
+   :param bool bold: Bold text (the only style Markdown can show).
+   :raises ValueError: for an unknown colour.
+
+   Named colours follow the HTML theme (light shades when printing); hex
+   values are used as given. HTML: classes ``cell-<name>`` /
+   ``cell-bg-<name>`` / ``cell-bold`` or inline styles. LaTeX:
+   ``\textcolor`` / ``\cellcolor`` (``colortbl``) / ``\textbf``. PDF:
+   per-cell colour, fill and bold.
+
+.. py:class:: CellStyle(color=None, background=None, bold=False)
+
+   Frozen dataclass holding a cell's normalized style; false when empty.
 
 .. py:class:: Image(src, alt="", title="")
 
@@ -488,8 +537,9 @@ Inline spans
 
 .. py:function:: ref(label, text="") -> Inline
 
-   A cross-reference to the captioned figure or table with this *label*:
-   "Figure 2" / "Table 1", or *text* if given. A link in HTML, LaTeX
+   A cross-reference to the section, or captioned figure or table, with
+   this *label*: "Section 2.1" / "Figure 2" / "Table 1", or *text* if given.
+   An unnumbered section is referred to by its title. A link in HTML, LaTeX
    (``\hyperref`` + ``\ref*``) and PDF; plain text in Markdown and in PDF
    table cells. Raises ``ValueError`` at render time for an unknown label.
 
@@ -539,6 +589,11 @@ are convenience wrappers around these.
    :raises ValueError: for an unknown *theme*.
    :raises ImportError: for ``highlight=True`` without Pygments.
 
+.. py:function:: reportsmith.renderers.html.page_css(report) -> str
+
+   ``@page`` rules for the report's running header and footer (margin
+   boxes), included in full HTML documents; ``""`` when there are none.
+
 .. py:function:: reportsmith.renderers.html.theme_css(theme="auto") -> str
 
    The default stylesheet for a theme; ``DEFAULT_CSS`` is
@@ -562,8 +617,10 @@ are convenience wrappers around these.
    :param str class_options: Class options; ``""`` for none.
    :param str preamble: Extra preamble appended after
       ``reportsmith.renderers.latex.DEFAULT_PREAMBLE``.
-   :param bool numbered: Number sections. Unnumbered sections are still
-      bookmarked.
+   :param bool numbered: Number sections (three levels). Unnumbered
+      sections are still bookmarked. ``Report(section_numbers=...)`` takes
+      precedence. The page header and footer use ``fancyhdr`` and
+      ``lastpage``; headings inside callouts are unnumbered (starred).
    :param assets_dir: Where figures made from plots or image bytes are
       written (required if the report has any); referenced as
       *assets_url* + file name, default the directory path.
@@ -617,6 +674,11 @@ Invalid ``Raw`` format                               ``ValueError`` (constructio
 Malformed definition-list or task-list entry         ``ValueError`` (construction)
 ``save()`` with an unknown file extension            ``ValueError``
 ``keywords`` given as a single string                ``TypeError`` (construction)
+Bad ``widths``/``footer`` length, unknown colour     ``ValueError`` (construction)
+``Cell`` in table headers                            ``TypeError`` (construction)
+``styles`` function returning a non-dict             ``TypeError`` (construction)
+Bad header/footer template or numbering depth        ``ValueError`` (construction)
+Invalid section label                                ``ValueError`` (construction)
 Unknown HTML ``theme``                               ``ValueError`` (render)
 ``highlight=True`` without Pygments                  ``ImportError`` (render)
 ``add()`` given a ``Report``; sections in a callout  ``TypeError``

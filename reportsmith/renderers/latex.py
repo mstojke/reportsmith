@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional, Union
 
 from ..elements import (
     Callout,
+    CellStyle,
     CodeBlock,
     Element,
     Figure,
@@ -25,9 +26,11 @@ from ..elements import (
     TableOfContents,
 )
 from ..assets import Assets, path_reference
+from ..colors import to_hex
 from ..highlight import latex_block, latex_style_defs, require_pygments
 from ..inline import Inline, InlineContent
 from ..numbering import LATEX_PREFIXES, KIND_NAMES, Numbering
+from ..page import segments
 
 if TYPE_CHECKING:
     from ..report import Report
@@ -46,6 +49,8 @@ DEFAULT_PREAMBLE = r"""\usepackage{iftex}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{longtable}
+\usepackage{array}
+\usepackage{colortbl}
 \usepackage{caption}
 \usepackage{amssymb}
 \usepackage{fancyvrb}
@@ -99,6 +104,10 @@ _SECTION_COMMANDS = {
     6: "subparagraph",
 }
 _ALIGN_SPEC = {"left": "l", "center": "c", "right": "r"}
+# Paragraph-column alignment for tables with widths (array package).
+_RAGGED = {"left": r"\raggedright", "center": r"\centering", "right": r"\raggedleft"}
+# Shading for every other body row of a striped table (colortbl).
+_STRIPE = r"\rowcolor[HTML]{F5F6F8}"
 # Frame and size of code blocks, shared with highlighted (Pygments) blocks.
 _VERBATIM_OPTIONS = r"frame=single, framesep=2mm, fontsize=\small"
 # Task list checkboxes (amssymb), keyed by "done".
@@ -155,7 +164,10 @@ class LatexRenderer:
         self.numbered = numbered
 
     def render(self, report: "Report") -> str:
-        self._numbering = Numbering(report)
+        # numbered=True keeps working: LaTeX's usual three levels.
+        self._depth = report.section_numbers or (3 if self.numbered else 0)
+        self._numbering = Numbering(report, section_depth=self._depth)
+        self._in_callout = 0
         self._assets = Assets(self.assets_dir, self.assets_url) if self.assets_dir is not None else None
         body = "".join(self._render_element(child) for child in report.children)
         if not self.full_document:
@@ -168,9 +180,8 @@ class LatexRenderer:
             f"\\documentclass{options}{{{self.document_class}}}\n",
             DEFAULT_PREAMBLE,
         ]
-        if not self.numbered:
-            # Unnumbered, but unlike \section* still in bookmarks/ToC.
-            parts.append("\\setcounter{secnumdepth}{0}\n")
+        # Depth 0 is unnumbered, but unlike \section* still in bookmarks/ToC.
+        parts.append(f"\\setcounter{{secnumdepth}}{{{self._depth}}}\n")
         fields = [
             ("pdftitle", report.title),
             ("pdfauthor", report.author),
@@ -180,6 +191,7 @@ class LatexRenderer:
         ]
         setup = ", ".join(f"{key}={{{escape_latex(value)}}}" for key, value in fields if value or key == "pdfauthor")
         parts.append(f"\\hypersetup{{{setup}}}\n")
+        parts.append(self._page_style(report))
         if self.highlight:
             parts.append(latex_style_defs())
         if self.preamble:
@@ -199,7 +211,7 @@ class LatexRenderer:
 
     def _render_element(self, el: Element) -> str:
         if isinstance(el, Section):
-            out = [self._heading(_SECTION_COMMANDS[el._level], el.title_parts)]
+            out = [self._heading(_SECTION_COMMANDS[el._level], el.title_parts, el.label)]
             out.extend(self._render_element(child) for child in el.children)
             return "".join(out)
         if isinstance(el, Heading):
@@ -250,7 +262,9 @@ class LatexRenderer:
                 f"\\setcounter{{tocdepth}}{{{el.depth}}}\\tableofcontents}}\n\n"
             )
         if isinstance(el, Callout):
+            self._in_callout += 1
             body = "".join(self._render_element(child) for child in el.children)
+            self._in_callout -= 1
             return (
                 f"\\begin{{rscallout}}{{rs{el.kind}}}{{{escape_latex(el.display_title)}}}\n"
                 f"{body.rstrip(chr(10))}\n"
@@ -258,16 +272,56 @@ class LatexRenderer:
             )
         raise TypeError(f"Cannot render element of type {type(el).__name__}")
 
-    def _heading(self, cmd: str, parts: list[InlineContent]) -> str:
+    def _page_style(self, report: "Report") -> str:
+        """fancyhdr setup for the running header and footer. The first page
+        (``plain``, used by ``\\maketitle``) gets the footer but no header."""
+
+        def fill(text: str) -> str:
+            pieces = []
+            for kind, value in segments(text, report):
+                if kind == "page":
+                    pieces.append("\\thepage")
+                elif kind == "pages":
+                    pieces.append("\\pageref*{LastPage}")
+                else:
+                    pieces.append(escape_latex(value))
+            return "".join(pieces)
+
+        def fields(band, where: str) -> str:
+            if band is None:
+                return ""
+            return "".join(
+                f"\\fancy{where}[{side}]{{\\small\\color{{black!60}}{fill(text)}}}"
+                for text, side in zip(band, "LCR")
+                if text
+            )
+
+        head, foot = fields(report.header, "head"), fields(report.footer, "foot")
+        return (
+            "\\usepackage{fancyhdr}\n"
+            "\\usepackage{lastpage}\n"
+            "\\setlength{\\headheight}{14pt}\n"
+            "\\renewcommand{\\headrulewidth}{0pt}\n"
+            f"\\fancyhf{{}}{head}{foot}\n"
+            "\\pagestyle{fancy}\n"
+            f"\\fancypagestyle{{plain}}{{\\fancyhf{{}}\\renewcommand{{\\headrulewidth}}{{0pt}}{foot}}}\n"
+        )
+
+    def _heading(self, cmd: str, parts: list[InlineContent], label: str = "") -> str:
         title = self._inline(parts)
+        if self._in_callout:
+            # Headings in callouts are left out of numbering and the TOC, as
+            # in the other formats.
+            return f"\\{cmd}*{{{title}}}\n\n"
+        target = f"\\label{{sec:{label}}}" if label else ""
         if not any(isinstance(p, Inline) and p.style == "footnote" for p in parts):
-            return f"\\{cmd}{{{title}}}\n\n"
+            return f"\\{cmd}{{{title}}}{target}\n\n"
         # A footnote can't go into the TOC or PDF bookmarks, so give the
         # heading a short title without it.
         short = self._inline(
             [p for p in parts if not (isinstance(p, Inline) and p.style == "footnote")]
         )
-        return f"\\{cmd}[{{{short}}}]{{{title}}}\n\n"
+        return f"\\{cmd}[{{{short}}}]{{{title}}}{target}\n\n"
 
     def _code(self, el: CodeBlock) -> str:
         if self.highlight:
@@ -311,26 +365,53 @@ class LatexRenderer:
     def _table(self, el: Table) -> str:
         if not el.headers:
             return ""
-        spec = "".join(_ALIGN_SPEC[a] for a in el.align)
+        if el.widths:
+            # Fixed-width columns that keep each column's alignment.
+            spec = "".join(
+                f">{{{_RAGGED[a]}\\arraybackslash}}p{{\\dimexpr {w:.4f}\\linewidth-2\\tabcolsep\\relax}}"
+                for a, w in zip(el.align, el.widths)
+            )
+        else:
+            spec = "".join(_ALIGN_SPEC[a] for a in el.align)
 
-        def row(cells: list[list[InlineContent]]) -> str:
-            return " & ".join(
-                self._cell(cell, _ALIGN_SPEC[a]) for cell, a in zip(cells, el.align)
+        def row(cells: list[list[InlineContent]], styles: list[CellStyle], prefix: str = "") -> str:
+            return prefix + " & ".join(
+                self._styled(self._cell(cell, _ALIGN_SPEC[a]), style)
+                for cell, a, style in zip(cells, el.align, styles)
             ) + " \\\\\n"
 
         out = [
             f"\\begin{{longtable}}{{{spec}}}\n",
             "\\toprule\n",
-            row(el.headers),
+            row(el.headers, [CellStyle()] * len(el.headers)),
             "\\midrule\n\\endhead\n",
         ]
-        out.extend(row(r) for r in el.rows)
+        for i, cells in enumerate(el.rows):
+            stripe = _STRIPE if el.striped and i % 2 == 1 else ""
+            out.append(row(cells, [el.style_at(i, j) for j in range(len(cells))], stripe))
+        if el.footer is not None:
+            footer_styles = [
+                CellStyle(s.color, s.background, True)
+                for s in (el.footer_styles.get(j, CellStyle()) for j in range(len(el.footer)))
+            ]
+            out.append("\\midrule\n")
+            out.append(row(el.footer, footer_styles))
         out.append("\\bottomrule\n")
         if el.caption:
             label = f"\\label{{tab:{el.label}}}" if el.label else ""
             out.append(f"\\caption{{{escape_latex(el.caption)}}}{label} \\\\\n")
         out.append("\\end{longtable}\n\n")
         return "".join(out)
+
+    @staticmethod
+    def _styled(text: str, style: CellStyle) -> str:
+        if style.bold and text:
+            text = f"\\textbf{{{text}}}"
+        if style.color:
+            text = f"\\textcolor[HTML]{{{to_hex(style.color)[1:].upper()}}}{{{text}}}"
+        if style.background:
+            text = f"\\cellcolor[HTML]{{{to_hex(style.background, True)[1:].upper()}}}{text}"
+        return text
 
     def _cell(self, parts: list[InlineContent], align: str) -> str:
         text = self._inline(parts)
@@ -404,7 +485,13 @@ class LatexRenderer:
             kind, _ = self._numbering.resolve(span.href)
             target = f"{LATEX_PREFIXES[kind]}:{span.href}"
             # \ref* is the number without its own link; the whole phrase links.
-            shown = escape_latex(span.text) if span.text else f"{KIND_NAMES[kind]}~\\ref*{{{target}}}"
+            if span.text:
+                shown = escape_latex(span.text)
+            elif kind == "section" and not self._numbering.resolve(span.href)[1]:
+                # Unnumbered sections are referred to by title.
+                shown = escape_latex(self._numbering.ref_text(span.href))
+            else:
+                shown = f"{KIND_NAMES[kind]}~\\ref*{{{target}}}"
             return f"\\hyperref[{target}]{{{shown}}}"
         if span.style == "footnote":
             return f"\\footnote{{{text}}}"

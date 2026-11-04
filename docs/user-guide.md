@@ -7,16 +7,16 @@ This guide walks through every feature. For a terse signature-level listing, see
 ## Contents
 
 1. [Creating a report](#creating-a-report) — including [metadata](#metadata)
-2. [Sections](#sections) — including [reusing and merging content](#reusing-and-merging-content)
+2. [Sections](#sections) — including [section numbering](#section-numbering) and [reusing and merging content](#reusing-and-merging-content)
 3. [Text and inline formatting](#text-and-inline-formatting) — including [footnotes](#footnotes)
-4. [Tables](#tables) — including [tables from data](#tables-from-data)
+4. [Tables](#tables) — including [table styling](#table-styling) and [tables from data](#tables-from-data)
 5. [Lists](#lists) — including [definition and task lists](#definition-lists-and-task-lists)
 6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules) — including [syntax highlighting](#syntax-highlighting)
 7. [Figures](#figures) — including [numbering and cross-references](#numbering-and-cross-references)
 8. [Callouts](#callouts)
 9. [Table of contents](#table-of-contents)
 10. [Raw passthrough content](#raw-passthrough-content)
-11. [Exporting](#exporting)
+11. [Exporting](#exporting) — including [page headers, footers and numbers](#page-headers-footers-and-numbers)
 12. [Exporting to LaTeX](#exporting-to-latex)
 13. [Exporting to PDF](#exporting-to-pdf)
 14. [Customizing the HTML output](#customizing-the-html-output)
@@ -91,6 +91,27 @@ s.paragraph("Overall results were positive.")
 ```
 
 If you need an out-of-band heading (not tied to a section), use `heading(text, level=None)`; when `level` is omitted it defaults to one deeper than the container it's added to.
+
+### Section numbering
+
+`Report(section_numbers=True)` numbers sections and headings the way LaTeX does — "1", "1.1", "1.1.1" — in every format:
+
+```python
+report = Report("Annual Review", section_numbers=True)   # three levels deep
+report = Report("Annual Review", section_numbers=2)      # or choose the depth (1-5)
+```
+
+Numbers appear in the headings and in every table of contents (Markdown TOC links still match the anchors GitHub generates for numbered headings). Deeper levels than the chosen depth stay unnumbered, as do headings inside callouts. Explicit `heading()`s are numbered like sections at their level, as in LaTeX. LaTeX's own `to_latex(numbered=True)` still works; `section_numbers` takes precedence when both are set.
+
+Label a section to refer to it, just like figures and tables:
+
+```python
+with report.section("Methodology", label="method") as s:
+    ...
+report.paragraph(["As described in ", ref("method"), "..."])   # "Section 2"
+```
+
+`ref()` to a section renders as "Section 2.1" — or, when sections aren't numbered (or the section is deeper than the numbering), as the section's title. Section labels share one namespace with figure and table labels.
 
 ### Reusing and merging content
 
@@ -199,6 +220,42 @@ s.table(
 - In Markdown, pipes in cell text are escaped and newlines inside a cell become `<br>` so the table stays valid.
 - A captioned table is numbered — "Table 1: Revenue by region" — in every format; see [numbering and cross-references](#numbering-and-cross-references).
 
+### Table styling
+
+```python
+from reportsmith import Cell
+
+s.table(
+    ["Region", "Revenue", "Growth", "Notes"],
+    [
+        ["EMEA", "$1.4M", Cell("+8%", color="green"), "Steady"],
+        ["Americas", "$1.1M", Cell("-4%", color="red", bold=True), Cell("Behind plan", background="amber")],
+    ],
+    align=["left", "right", "right", "left"],
+    widths=[2, 1, 1, 3],                       # relative column widths
+    striped=True,                              # shade every other row
+    footer=["Total", "$2.5M", Cell("+3%", color="green"), ""],
+)
+```
+
+- **`widths`** — relative column widths, one per column (`[2, 1, 1, 3]` makes the last column three times as wide as the second). HTML uses `<col>` widths, LaTeX fixed-width columns that keep each column's alignment, PDF column widths. Markdown has no column widths.
+- **`striped=True`** — shades every other body row (and, in PDF, the header) for readability.
+- **`footer`** — a totals row below the body, one cell per column: bold and set apart by a rule (`<tfoot>` in HTML, a `\midrule` in LaTeX, a bold last row in Markdown). Never striped.
+- **`Cell(content, color=None, background=None, bold=False)`** — a styled cell, usable in rows and the footer. Colours are `"red"`, `"green"`, `"amber"`, `"blue"`, `"gray"` (also `"grey"`) or hex values like `"#7c3aed"` / `"#eef"`. Named colours use a strong shade for text and a pale tint for backgrounds, and in HTML adapt to the dark theme (and print in their light shades); hex values are used as given in every theme. Markdown shows only `bold`. Header cells can't be styled.
+
+For [tables from data](#tables-from-data), `styles` styles cells from their values — each function gets the raw value (before formatting) and returns `Cell` options or `None`:
+
+```python
+s.table_from_records(
+    rows,
+    formats={"growth": "{:+.0%}"},
+    styles={"growth": lambda v: {"color": "red"} if v < 0 else {"color": "green"}},
+    striped=True,
+)
+```
+
+Missing values (`None`, NaN) aren't passed to style functions. `widths`, `striped` and `footer` work for data tables too.
+
 ### Tables from data
 
 Three helpers build a table straight from data, so you don't have to turn values into strings yourself:
@@ -228,6 +285,8 @@ All three accept the same options:
 | `missing="—"` | Text for `None`, NaN, and pandas `NA`/`NaT` (default: empty cell). |
 | `align=None` | Default: numeric columns are right-aligned, others left. Pass a list to override. |
 | `caption="..."`, `label="..."` | Caption and cross-reference label, as for `table()`. |
+| `widths=`, `striped=`, `footer=` | [Table styling](#table-styling), as for `table()`. |
+| `styles={"growth": fn}` | Per-column functions from the raw value to `Cell` options (`{"color": "red"}`) or `None`. |
 
 Values without a format are rendered with `str()`. Booleans count as text, not numbers.
 
@@ -363,7 +422,7 @@ s.paragraph(["Revenue grew 21% (", ref("revenue"), "); ", ref("revenue-chart", "
 s.table(headers, rows, caption="Revenue by region", label="revenue")
 ```
 
-`ref("revenue")` renders as "Table 1" — a link in HTML, LaTeX and PDF, plain text in Markdown — and `ref(label, "custom text")` uses your wording instead. References may come before or after their target. Labels use letters, digits, `_`, `.`, `:` and `-`; a label needs a caption (only numbered items can be referred to), a duplicate label raises `ValueError`, and so does `ref()` to a label that doesn't exist.
+`ref("revenue")` renders as "Table 1" — a link in HTML, LaTeX and PDF, plain text in Markdown — and `ref(label, "custom text")` uses your wording instead. Sections can be labelled and referred to as well ("Section 2.1"; see [Section numbering](#section-numbering)). References may come before or after their target. Labels use letters, digits, `_`, `.`, `:` and `-`; a label needs a caption (only numbered items can be referred to), a duplicate label raises `ValueError`, and so does `ref()` to a label that doesn't exist.
 
 In LaTeX, numbers come from LaTeX itself (`\caption`, `\label`, `\ref`), and plain `image()` captions are unnumbered (`\caption*`), so they match the other formats.
 
@@ -445,6 +504,28 @@ report.save("report.pdf")             # format from the extension
 report.save("report.html", full_document=False)   # options go to save_html()
 ```
 
+### Page headers, footers and numbers
+
+PDF, LaTeX and printed HTML get running headers and footers from the report:
+
+```python
+report = Report(
+    "Q3 Sales Report",
+    date="2026-11-03",
+    header=("{title}", "", "{date}"),                 # (left, centre, right)
+    footer=("", "Page {page} of {pages}", "Confidential"),
+)
+```
+
+Each is a string (centred) or a `(left, centre, right)` tuple. Placeholders: `{page}`, `{pages}` (the total), `{title}`, `{subtitle}`, `{author}` and `{date}`; write `{{` / `}}` for literal braces. An unknown placeholder raises `ValueError` when the report is created.
+
+- **Defaults:** no header, and a centred page number as the footer — `footer="{page}"`. Pass `footer=None` for no page numbers.
+- **The first page** shows the footer but not the header, since the title block is there.
+- **PDF:** drawn in small muted text in the page margins.
+- **LaTeX:** set up with `fancyhdr`, and `lastpage` for `{pages}`. The first page uses the `plain` style (footer only).
+- **HTML:** `@page` margin boxes in the stylesheet, used when the page is printed or saved as PDF from the browser. Chromium-based browsers (Chrome, Edge) and paged-media tools such as WeasyPrint, Paged.js and Prince support them; Firefox and Safari currently print without them. `reportsmith.renderers.html.page_css(report)` returns just these rules.
+- **Markdown** has no pages, so it is unaffected.
+
 `to_html()` / `save_html()` also take `theme=` and `highlight=` (see [Customizing the HTML output](#customizing-the-html-output) and [Syntax highlighting](#syntax-highlighting)); `to_markdown()` / `save_markdown()` take `front_matter=` (see [Metadata](#metadata)).
 
 `save(path, **options)` picks the format from the file extension — `.md` / `.markdown`, `.html` / `.htm`, `.tex`, `.pdf` (case-insensitive) — and passes any options to the matching `save_*` method. Other extensions raise `ValueError`.
@@ -485,7 +566,7 @@ Options (on `to_latex()`, `save_latex()`, and `LatexRenderer`):
 - `full_document=False` returns only the body (sections onward — no preamble, title block, or `\begin{document}`), ready to `\input` into your own document. Your document then needs the packages listed in `reportsmith.renderers.latex.DEFAULT_PREAMBLE`, and the `rscallout` environment and `rs*` colours defined there if the report contains callouts.
 - `document_class="report"` / `class_options="12pt,letterpaper"` change the `\documentclass` line.
 - `preamble="..."` is appended after the built-in preamble, e.g. `preamble="\\usepackage{amsmath}"` or `\\renewcommand` tweaks.
-- `numbered=True` numbers sections; by default they are unnumbered (but still bookmarked).
+- `numbered=True` numbers sections (three levels, LaTeX's default); by default they are unnumbered (but still bookmarked). `Report(section_numbers=...)` does the same in every format and takes precedence.
 - `assets_dir=...` (on `to_latex()` and `LatexRenderer`): where to write figures made from plots or image bytes. `save_latex()` uses a `<name>_files/` folder automatically.
 
 Details and limitations:

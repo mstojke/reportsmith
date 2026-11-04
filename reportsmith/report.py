@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Optional, Sequence, Union
 
 from .elements import Container
+from .page import parse_band
 
 
 class Report(Container):
@@ -21,6 +22,17 @@ class Report(Container):
     ``description``, ``keywords`` and ``language`` are document metadata:
     HTML ``<meta>`` tags and ``lang``, PDF document properties, LaTeX's PDF
     fields, and optional Markdown front matter.
+
+    ``header`` and ``footer`` are running page headers/footers for PDF,
+    LaTeX and printed HTML: a string (centred) or a ``(left, centre,
+    right)`` tuple, with ``{page}``, ``{pages}``, ``{title}``,
+    ``{subtitle}``, ``{author}`` and ``{date}`` placeholders. The header is
+    left off the first page. The default footer is the page number;
+    ``None`` removes it.
+
+    ``section_numbers`` numbers sections and headings ("1", "1.1", ...) in
+    every format: ``True`` numbers three levels deep, an int 1-5 sets the
+    depth, ``False`` (default) turns numbering off.
     """
 
     def __init__(
@@ -32,6 +44,9 @@ class Report(Container):
         description: str = "",
         keywords: Sequence[str] = (),
         language: str = "en",
+        header: Union[None, str, Sequence[str]] = None,
+        footer: Union[None, str, Sequence[str]] = "{page}",
+        section_numbers: Union[bool, int] = False,
     ):
         super().__init__()
         self.title = title
@@ -42,6 +57,13 @@ class Report(Container):
             raise TypeError("keywords must be a sequence of strings, not a single string")
         self.keywords = [str(k) for k in keywords]
         self.language = language
+        self.header = parse_band(header, "header")
+        self.footer = parse_band(footer, "footer")
+        if isinstance(section_numbers, bool):
+            section_numbers = 3 if section_numbers else 0
+        if not 0 <= section_numbers <= 5:
+            raise ValueError(f"section_numbers must be a bool or a depth 0-5, got {section_numbers}")
+        self.section_numbers = section_numbers
         if date is None:
             self.date = _dt.date.today().isoformat()
         elif isinstance(date, (_dt.date, _dt.datetime)):

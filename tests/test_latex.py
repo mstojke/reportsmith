@@ -56,7 +56,7 @@ class TestDocument:
 
     def test_unnumbered_by_default(self):
         assert "\\setcounter{secnumdepth}{0}" in Report("T").to_latex()
-        assert "secnumdepth" not in Report("T").to_latex(numbered=True)
+        assert "\\setcounter{secnumdepth}{3}" in Report("T").to_latex(numbered=True)
 
     def test_class_and_preamble_options(self):
         tex = Report("T").to_latex(

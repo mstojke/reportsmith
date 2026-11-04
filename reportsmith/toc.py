@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Iterator, Union
+from typing import TYPE_CHECKING, Any, Iterator, Union
 
 from .elements import Container, Heading, Section, TableOfContents
 from .inline import Inline, InlineContent
@@ -23,6 +23,7 @@ class TocEntry:
     depth: int  # 1 = top-level section
     parts: list[InlineContent]
     children: list["TocEntry"] = field(default_factory=list)
+    number: str = ""  # "2.1" when sections are numbered
 
 
 def plain_text(parts: list[InlineContent]) -> str:
@@ -60,14 +61,19 @@ def heading_depth(el: Union[Section, Heading]) -> int:
     return max(level - 1, 1)
 
 
-def collect_entries(report: "Report", depth: int) -> list[TocEntry]:
-    """Flat list of TOC entries up to ``depth``, in document order."""
+def collect_entries(report: "Report", depth: int, numbering: Any = None) -> list[TocEntry]:
+    """Flat list of TOC entries up to ``depth``, in document order.
+
+    With a :class:`~reportsmith.numbering.Numbering`, entries carry their
+    section numbers.
+    """
     entries = []
     for el in iter_headings(report):
         d = heading_depth(el)
         if d <= depth:
             parts = el.title_parts if isinstance(el, Section) else el.parts
-            entries.append(TocEntry(el, d, parts))
+            number = numbering.section_number(el) if numbering is not None else ""
+            entries.append(TocEntry(el, d, parts, number=number))
     return entries
 
 
@@ -102,16 +108,19 @@ class Slugger:
         return slug
 
 
-def heading_anchors(report: "Report") -> dict[int, str]:
+def heading_anchors(report: "Report", numbering: Any = None) -> dict[int, str]:
     """Map ``id(element)`` to a unique anchor for every heading.
 
     The report title is slugged first so anchors match what GitHub (and
-    most Markdown viewers) generate for the rendered document.
+    most Markdown viewers) generate for the rendered document. Section
+    numbers are part of the heading text, so they are slugged too.
     """
     slugger = Slugger()
     slugger.slug(report.title)
     anchors = {}
     for el in iter_headings(report):
         parts = el.title_parts if isinstance(el, Section) else el.parts
-        anchors[id(el)] = slugger.slug(plain_text(parts))
+        text = plain_text(parts)
+        number = numbering.section_number(el) if numbering is not None else ""
+        anchors[id(el)] = slugger.slug(f"{number} {text}" if number else text)
     return anchors
