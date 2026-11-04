@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- An examples website on GitHub Pages (https://mstojke.github.io/reportsmith/):
+  every example rendered as HTML, PDF, Markdown and LaTeX next to its
+  source, with an index page built by reportsmith itself. The
+  `Examples site` workflow rebuilds it from `main` on every push, and the
+  README links to each example.
+
 ## [0.7.0] - 2026-11-04
 
 ### Added

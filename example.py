@@ -1,4 +1,4 @@
-"""Demo: build a sample report and export it to Markdown and HTML."""
+"""Demo: build a sample report and export it to Markdown, HTML, LaTeX and PDF."""
 
 from reportsmith import ListElement, Report, bold, code, italic, link
 

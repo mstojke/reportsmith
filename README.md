@@ -2,8 +2,11 @@
 
 [![Tests](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml/badge.svg)](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/mstojke/reportsmith/badges/coverage.json)](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml)
+[![Examples](https://img.shields.io/badge/examples-live-1d4ed8)](https://mstojke.github.io/reportsmith/)
 
 A small, dependency-free Python library for building reports programmatically and exporting them to **Markdown**, a **standalone styled HTML** document, **LaTeX**, or (optionally) **PDF**.
+
+**[See the examples →](https://mstojke.github.io/reportsmith/)** every example report, rendered in all four formats, with the script that made it.
 
 ## Features
 
@@ -65,7 +68,25 @@ report.save_latex("report.tex")    # compile with pdflatex/xelatex/lualatex
 report.save("report.pdf")          # any format, chosen by the file extension
 ```
 
-Run `python example.py` for a fuller demo that writes `example_report.md`, `example_report.html`, and `example_report.tex`.
+Run `python example.py` for a fuller demo that writes `example_report.md`, `example_report.html`, `example_report.tex`, and `example_report.pdf`.
+
+## Examples
+
+The **[examples site](https://mstojke.github.io/reportsmith/)** shows every example in one place — each report as HTML, PDF, Markdown and LaTeX, next to its source:
+
+| Example | Shows |
+| --- | --- |
+| [Quick start](https://mstojke.github.io/reportsmith/#quick-start) | Sections, inline formatting, tables, lists, code |
+| [Table of contents](https://mstojke.github.io/reportsmith/#table-of-contents) | Multi-level TOC in every format |
+| [Tables from data](https://mstojke.github.io/reportsmith/#tables-from-data) | Records, CSV, and pandas DataFrames |
+| [Table styling](https://mstojke.github.io/reportsmith/#table-styling) | Column widths, stripes, totals, coloured cells |
+| [Figures and cross-references](https://mstojke.github.io/reportsmith/#figures-and-cross-references) | matplotlib figures, numbered captions, `ref()` |
+| [Callouts and inline styles](https://mstojke.github.io/reportsmith/#callouts-and-inline-styles) | Notes and warnings, footnotes, strikethrough, sub/superscript |
+| [Lists and page breaks](https://mstojke.github.io/reportsmith/#lists-and-page-breaks) | Definition and task lists, page breaks, `save()` |
+| [Headers, footers and section numbering](https://mstojke.github.io/reportsmith/#headers-footers-and-section-numbering) | Page numbers, running headers, numbered sections |
+| [Merging, metadata and highlighting](https://mstojke.github.io/reportsmith/#merging-metadata-and-highlighting) | Combining reports, themes, syntax highlighting |
+
+The sources are in [`examples/`](https://github.com/mstojke/reportsmith/tree/main/examples). The site is rebuilt from `main` on every push by the [Examples site workflow](https://github.com/mstojke/reportsmith/actions/workflows/pages.yml).
 
 ## Documentation
 
