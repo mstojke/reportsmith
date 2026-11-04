@@ -13,8 +13,10 @@ import io
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Iterable, Optional, Sequence, Union
+from dataclasses import dataclass
+from typing import IO, TYPE_CHECKING, Any, Callable, Iterable, Optional, Sequence, Union
 
+from .colors import check_color
 from .inline import Inline, InlineContent, TextLike, normalize
 
 if TYPE_CHECKING:
@@ -95,23 +97,111 @@ class PageBreak(Element):
     """Start a new page: in PDF and LaTeX, and when printing HTML."""
 
 
+@dataclass(frozen=True)
+class CellStyle:
+    """How a table cell is styled. Colours are names from
+    ``reportsmith.colors.NAMES`` or ``"#rrggbb"``."""
+
+    color: Optional[str] = None
+    background: Optional[str] = None
+    bold: bool = False
+
+    def __bool__(self) -> bool:
+        return bool(self.color or self.background or self.bold)
+
+
+class Cell:
+    """Table cell content with styling, usable wherever a table takes a cell.
+
+    ``color`` (text) and ``background`` are colour names — ``"red"``,
+    ``"green"``, ``"amber"``, ``"blue"``, ``"gray"`` — or hex values like
+    ``"#b91c1c"``; names adapt to the HTML dark theme. Markdown shows only
+    ``bold``.
+    """
+
+    def __init__(
+        self,
+        content: TextLike,
+        color: Optional[str] = None,
+        background: Optional[str] = None,
+        bold: bool = False,
+    ):
+        self.parts: list[InlineContent] = normalize(content)
+        self.style = CellStyle(
+            check_color(color, "color"), check_color(background, "background"), bool(bold)
+        )
+
+    def __repr__(self) -> str:
+        return f"Cell({self.parts!r}, {self.style!r})"
+
+
+def _cell(value: Any, where: str) -> tuple[list[InlineContent], CellStyle]:
+    if isinstance(value, Cell):
+        return value.parts, value.style
+    return normalize(value), CellStyle()
+
+
 class Table(Element):
+    """A table. Cells are inline text or :class:`Cell` objects (for styling).
+
+    ``widths`` gives relative column widths (``[3, 1, 1]``), ``striped``
+    shades every other body row, and ``footer`` adds a totals row below the
+    body, set apart and in bold.
+    """
+
     def __init__(
         self,
         headers: Sequence[TextLike],
-        rows: Sequence[Sequence[TextLike]],
+        rows: Sequence[Sequence[Union[TextLike, "Cell"]]],
         caption: str = "",
         align: Optional[Sequence[str]] = None,
         label: str = "",
+        widths: Optional[Sequence[float]] = None,
+        striped: bool = False,
+        footer: Optional[Sequence[Union[TextLike, "Cell"]]] = None,
     ):
+        if any(isinstance(h, Cell) for h in headers):
+            raise TypeError("Header cells can't be styled; use Cell in rows or the footer")
         self.headers = [normalize(h) for h in headers]
-        self.rows = [[normalize(cell) for cell in row] for row in rows]
         width = len(self.headers)
-        for i, row in enumerate(self.rows):
-            if len(row) != width:
+        self.rows: list[list[list[InlineContent]]] = []
+        # (row, column) -> style, for styled body cells only
+        self.cell_styles: dict[tuple[int, int], CellStyle] = {}
+        for i, row in enumerate(rows):
+            cells = list(row)
+            if len(cells) != width:
                 raise ValueError(
-                    f"Row {i} has {len(row)} cells, expected {width}"
+                    f"Row {i} has {len(cells)} cells, expected {width}"
                 )
+            parsed = []
+            for j, value in enumerate(cells):
+                parts, style = _cell(value, "row")
+                parsed.append(parts)
+                if style:
+                    self.cell_styles[(i, j)] = style
+            self.rows.append(parsed)
+        self.footer: Optional[list[list[InlineContent]]] = None
+        self.footer_styles: dict[int, CellStyle] = {}
+        if footer is not None:
+            cells = list(footer)
+            if len(cells) != width:
+                raise ValueError(f"footer has {len(cells)} cells, expected {width}")
+            self.footer = []
+            for j, value in enumerate(cells):
+                parts, style = _cell(value, "footer")
+                self.footer.append(parts)
+                if style:
+                    self.footer_styles[j] = style
+        self.widths: Optional[list[float]] = None
+        if widths is not None:
+            values = list(widths)
+            if len(values) != width:
+                raise ValueError("widths must have one entry per column")
+            if not all(isinstance(w, (int, float)) and not isinstance(w, bool) and w > 0 for w in values):
+                raise ValueError("widths must be positive numbers")
+            total = float(sum(values))
+            self.widths = [w / total for w in values]  # fractions of the table width
+        self.striped = bool(striped)
         self.caption = caption
         self.label = _check_label(label, caption)
         if align is not None:
@@ -121,6 +211,10 @@ class Table(Element):
                 if a not in ("left", "center", "right"):
                     raise ValueError(f"Invalid alignment: {a!r}")
         self.align = list(align) if align is not None else ["left"] * width
+
+    def style_at(self, row: int, column: int) -> CellStyle:
+        """The style of a body cell (empty when it isn't styled)."""
+        return self.cell_styles.get((row, column), CellStyle())
 
     # -- construction from data ------------------------------------------
     # Shared options: ``columns`` selects and orders columns; ``headers``
@@ -142,6 +236,10 @@ class Table(Element):
         missing: str = "",
         caption: str = "",
         label: str = "",
+        widths: Optional[Sequence[float]] = None,
+        striped: bool = False,
+        footer: Optional[Sequence[Any]] = None,
+        styles: Optional[Mapping[Any, Callable[[Any], Any]]] = None,
     ) -> "Table":
         """Build a table from a sequence of dicts (keys become headers)."""
         from .data import from_records
@@ -149,6 +247,7 @@ class Table(Element):
         return from_records(
             records, columns, headers=headers, formats=formats,
             align=align, missing=missing, caption=caption, label=label,
+            widths=widths, striped=striped, footer=footer, styles=styles,
         )
 
     @classmethod
@@ -166,6 +265,10 @@ class Table(Element):
         missing: str = "",
         caption: str = "",
         label: str = "",
+        widths: Optional[Sequence[float]] = None,
+        striped: bool = False,
+        footer: Optional[Sequence[Any]] = None,
+        styles: Optional[Mapping[Any, Callable[[Any], Any]]] = None,
     ) -> "Table":
         """Build a table from a CSV file path or open text file.
 
@@ -179,6 +282,7 @@ class Table(Element):
             source, columns, delimiter=delimiter, encoding=encoding,
             parse_numbers=parse_numbers, headers=headers, formats=formats,
             align=align, missing=missing, caption=caption, label=label,
+            widths=widths, striped=striped, footer=footer, styles=styles,
         )
 
     @classmethod
@@ -194,6 +298,10 @@ class Table(Element):
         missing: str = "",
         caption: str = "",
         label: str = "",
+        widths: Optional[Sequence[float]] = None,
+        striped: bool = False,
+        footer: Optional[Sequence[Any]] = None,
+        styles: Optional[Mapping[Any, Callable[[Any], Any]]] = None,
     ) -> "Table":
         """Build a table from a pandas DataFrame (pandas is not required by
         reportsmith itself). ``index=True`` adds the index as the first column."""
@@ -202,6 +310,7 @@ class Table(Element):
         return from_dataframe(
             df, columns, index=index, headers=headers, formats=formats,
             align=align, missing=missing, caption=caption, label=label,
+            widths=widths, striped=striped, footer=footer, styles=styles,
         )
 
 
@@ -453,8 +562,12 @@ class Container(Element):
         caption: str = "",
         align: Optional[Sequence[str]] = None,
         label: str = "",
+        widths: Optional[Sequence[float]] = None,
+        striped: bool = False,
+        footer: Optional[Sequence[Any]] = None,
     ) -> "Container":
-        self.children.append(Table(headers, rows, caption, align, label))
+        """Add a :class:`Table`; cells may be :class:`Cell` objects for styling."""
+        self.children.append(Table(headers, rows, caption, align, label, widths, striped, footer))
         return self
 
     def table_from_records(
@@ -645,6 +758,8 @@ def _prefix_labels(element: Element, prefix: str) -> None:
     elif isinstance(element, Table):
         element.headers = [fix(h) for h in element.headers]
         element.rows = [[fix(cell) for cell in row] for row in element.rows]
+        if element.footer is not None:
+            element.footer = [fix(cell) for cell in element.footer]
     elif isinstance(element, DefinitionList):
         element.items = [(fix(term), fix(definition)) for term, definition in element.items]
     elif isinstance(element, TaskList):

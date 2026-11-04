@@ -161,6 +161,7 @@ jobs:
           python examples/lists_example.py
           python examples/merge_example.py
           python examples/pages_example.py
+          python examples/table_styling_example.py
 
       - name: Compile with ${{ matrix.engine }}
         run: |

@@ -20,6 +20,7 @@ Quick start::
 from .inline import Inline, bold, code, footnote, italic, link, ref, strike, sub, sup
 from .elements import (
     Callout,
+    Cell,
     CodeBlock,
     Figure,
     Heading,
@@ -50,6 +51,7 @@ __all__ = [
     "Heading",
     "Paragraph",
     "Table",
+    "Cell",
     "TableOfContents",
     "ListElement",
     "DefinitionList",

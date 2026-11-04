@@ -227,10 +227,20 @@ class MarkdownRenderer:
             # Pipes break table syntax; newlines become <br> inside cells.
             return self._inline(parts).replace("|", "\\|").replace("\n", "<br>")
 
+        def styled(parts: list[InlineContent], bold: bool) -> str:
+            # Markdown can show bold, but not colours or backgrounds.
+            text = cell(parts)
+            return self._term(parts).replace("|", "\\|").replace("\n", "<br>") if bold and text else text
+
         lines = ["| " + " | ".join(cell(h) for h in el.headers) + " |"]
         lines.append("| " + " | ".join(_ALIGN_MARKERS[a] for a in el.align) + " |")
-        for row in el.rows:
-            lines.append("| " + " | ".join(cell(c) for c in row) + " |")
+        for i, row in enumerate(el.rows):
+            lines.append("| " + " | ".join(
+                styled(c, el.style_at(i, j).bold) for j, c in enumerate(row)
+            ) + " |")
+        if el.footer is not None:
+            # No footer syntax in Markdown: a bold last row.
+            lines.append("| " + " | ".join(styled(c, True) for c in el.footer) + " |")
         table = "\n".join(lines)
         if el.caption:
             table += f"\n\n*{self._numbering.caption_label(el)}: {el.caption}*"

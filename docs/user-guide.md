@@ -9,7 +9,7 @@ This guide walks through every feature. For a terse signature-level listing, see
 1. [Creating a report](#creating-a-report) — including [metadata](#metadata)
 2. [Sections](#sections) — including [section numbering](#section-numbering) and [reusing and merging content](#reusing-and-merging-content)
 3. [Text and inline formatting](#text-and-inline-formatting) — including [footnotes](#footnotes)
-4. [Tables](#tables) — including [tables from data](#tables-from-data)
+4. [Tables](#tables) — including [table styling](#table-styling) and [tables from data](#tables-from-data)
 5. [Lists](#lists) — including [definition and task lists](#definition-lists-and-task-lists)
 6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules) — including [syntax highlighting](#syntax-highlighting)
 7. [Figures](#figures) — including [numbering and cross-references](#numbering-and-cross-references)
@@ -220,6 +220,42 @@ s.table(
 - In Markdown, pipes in cell text are escaped and newlines inside a cell become `<br>` so the table stays valid.
 - A captioned table is numbered — "Table 1: Revenue by region" — in every format; see [numbering and cross-references](#numbering-and-cross-references).
 
+### Table styling
+
+```python
+from reportsmith import Cell
+
+s.table(
+    ["Region", "Revenue", "Growth", "Notes"],
+    [
+        ["EMEA", "$1.4M", Cell("+8%", color="green"), "Steady"],
+        ["Americas", "$1.1M", Cell("-4%", color="red", bold=True), Cell("Behind plan", background="amber")],
+    ],
+    align=["left", "right", "right", "left"],
+    widths=[2, 1, 1, 3],                       # relative column widths
+    striped=True,                              # shade every other row
+    footer=["Total", "$2.5M", Cell("+3%", color="green"), ""],
+)
+```
+
+- **`widths`** — relative column widths, one per column (`[2, 1, 1, 3]` makes the last column three times as wide as the second). HTML uses `<col>` widths, LaTeX fixed-width columns that keep each column's alignment, PDF column widths. Markdown has no column widths.
+- **`striped=True`** — shades every other body row (and, in PDF, the header) for readability.
+- **`footer`** — a totals row below the body, one cell per column: bold and set apart by a rule (`<tfoot>` in HTML, a `\midrule` in LaTeX, a bold last row in Markdown). Never striped.
+- **`Cell(content, color=None, background=None, bold=False)`** — a styled cell, usable in rows and the footer. Colours are `"red"`, `"green"`, `"amber"`, `"blue"`, `"gray"` (also `"grey"`) or hex values like `"#7c3aed"` / `"#eef"`. Named colours use a strong shade for text and a pale tint for backgrounds, and in HTML adapt to the dark theme (and print in their light shades); hex values are used as given in every theme. Markdown shows only `bold`. Header cells can't be styled.
+
+For [tables from data](#tables-from-data), `styles` styles cells from their values — each function gets the raw value (before formatting) and returns `Cell` options or `None`:
+
+```python
+s.table_from_records(
+    rows,
+    formats={"growth": "{:+.0%}"},
+    styles={"growth": lambda v: {"color": "red"} if v < 0 else {"color": "green"}},
+    striped=True,
+)
+```
+
+Missing values (`None`, NaN) aren't passed to style functions. `widths`, `striped` and `footer` work for data tables too.
+
 ### Tables from data
 
 Three helpers build a table straight from data, so you don't have to turn values into strings yourself:
@@ -249,6 +285,8 @@ All three accept the same options:
 | `missing="—"` | Text for `None`, NaN, and pandas `NA`/`NaT` (default: empty cell). |
 | `align=None` | Default: numeric columns are right-aligned, others left. Pass a list to override. |
 | `caption="..."`, `label="..."` | Caption and cross-reference label, as for `table()`. |
+| `widths=`, `striped=`, `footer=` | [Table styling](#table-styling), as for `table()`. |
+| `styles={"growth": fn}` | Per-column functions from the raw value to `Cell` options (`{"color": "red"}`) or `None`. |
 
 Values without a format are rendered with `str()`. Booleans count as text, not numbers.
 

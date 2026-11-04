@@ -13,7 +13,7 @@ Everything documented here is importable from the top-level package:
        Report, Section,
        Heading, Paragraph, Quote, CodeBlock, ListElement, DefinitionList,
        TaskList, PageBreak, Table, Image,
-       HorizontalRule, Raw, TableOfContents, Callout, Figure,
+       HorizontalRule, Raw, TableOfContents, Callout, Figure, Cell,
        Inline, bold, italic, code, link, strike, sub, sup, footnote, ref,
        MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer,
    )
@@ -185,7 +185,7 @@ Container (builder API)
 
       Add a :class:`PageBreak`.
 
-   .. py:method:: table(headers, rows, caption="", align=None, label="") -> Container
+   .. py:method:: table(headers, rows, caption="", align=None, label="", widths=None, striped=False, footer=None) -> Container
 
       Add a :class:`Table`.
 
@@ -309,7 +309,7 @@ render-agnostic.
    ``\clearpage``. HTML: ``<div class="page-break">``, a break when
    printed. Markdown: an invisible ``<div style="break-after: page">``.
 
-.. py:class:: Table(headers, rows, caption="", align=None, label="")
+.. py:class:: Table(headers, rows, caption="", align=None, label="", widths=None, striped=False, footer=None)
 
    :param headers: ``Sequence[TextLike]`` — one entry per column.
    :param rows: ``Sequence[Sequence[TextLike]]``.
@@ -319,8 +319,18 @@ render-agnostic.
    :param align: One of ``"left"``, ``"center"``, ``"right"`` per column;
       default all-left.
    :param str label: Name for :func:`ref`; requires a caption.
+   :param widths: Relative column widths, one positive number per column;
+      stored as fractions in ``widths``.
+   :param bool striped: Shade every other body row.
+   :param footer: A totals row (one cell per column), bold and set apart;
+      cells may be :class:`Cell`.
+   :raises TypeError: for a :class:`Cell` among the headers.
    :raises ValueError: for row-width mismatch, wrong ``align`` length, an
       invalid ``align`` value, or an invalid label / label without caption.
+
+   Row and footer cells may be :class:`Cell` objects for styling; plain
+   cells are unstyled. ``style_at(row, column)`` returns a body cell's
+   :class:`CellStyle`, ``footer_styles`` maps footer columns to theirs.
 
    Markdown cells escape ``|`` and turn embedded newlines into ``<br>``.
 
@@ -340,18 +350,22 @@ render-agnostic.
       ``NaT``; default ``""``.
    :param str caption: As above.
    :param str label: As above.
+   :param widths, striped, footer: As above.
+   :param styles: Mapping from column key to a function of the raw
+      (unformatted) value returning ``Cell`` options (``{"color": "red",
+      "bold": True}``) or ``None``. Not called for missing values.
    :raises ValueError: for column names in ``columns``, ``headers`` or
       ``formats`` that don't exist, or a ``headers`` sequence of the wrong
       length.
 
-   .. py:classmethod:: from_records(records, columns=None, *, headers=None, formats=None, align=None, missing="", caption="", label="") -> Table
+   .. py:classmethod:: from_records(records, columns=None, *, headers=None, formats=None, align=None, missing="", caption="", label="", widths=None, striped=False, footer=None, styles=None) -> Table
 
       Rows from an iterable of mappings. Columns default to the union of
       keys in first-seen order; keys absent from a record are missing.
 
       :raises TypeError: if a record is not a mapping.
 
-   .. py:classmethod:: from_csv(source, columns=None, *, delimiter=",", encoding="utf-8", parse_numbers=True, headers=None, formats=None, align=None, missing="", caption="", label="") -> Table
+   .. py:classmethod:: from_csv(source, columns=None, *, delimiter=",", encoding="utf-8", parse_numbers=True, headers=None, formats=None, align=None, missing="", caption="", label="", widths=None, striped=False, footer=None, styles=None) -> Table
 
       Rows from a CSV file path or open text file; the first row is the
       header. With ``parse_numbers``, a column whose values all parse as
@@ -361,7 +375,7 @@ render-agnostic.
 
       :raises ValueError: for empty input or a row with too many fields.
 
-   .. py:classmethod:: from_dataframe(df, columns=None, *, index=False, headers=None, formats=None, align=None, missing="", caption="", label="") -> Table
+   .. py:classmethod:: from_dataframe(df, columns=None, *, index=False, headers=None, formats=None, align=None, missing="", caption="", label="", widths=None, striped=False, footer=None, styles=None) -> Table
 
       Rows from a pandas DataFrame (or any object with ``columns`` and
       ``itertuples()``); pandas is not imported. ``index=True`` prepends the
@@ -398,6 +412,29 @@ render-agnostic.
 
       The image as ``(bytes, format)``; plots are rendered as
       *plot_format*.
+
+.. py:class:: Cell(content, color=None, background=None, bold=False)
+
+   A styled table cell, usable in a table's rows and footer (not headers).
+
+   :param content: ``TextLike``.
+   :param color: Text colour: ``"red"``, ``"green"``, ``"amber"``,
+      ``"blue"``, ``"gray"`` (or ``"grey"``), or a hex value such as
+      ``"#7c3aed"`` or ``"#eef"``.
+   :param background: Background colour, same choices; names use pale
+      tints.
+   :param bool bold: Bold text (the only style Markdown can show).
+   :raises ValueError: for an unknown colour.
+
+   Named colours follow the HTML theme (light shades when printing); hex
+   values are used as given. HTML: classes ``cell-<name>`` /
+   ``cell-bg-<name>`` / ``cell-bold`` or inline styles. LaTeX:
+   ``\textcolor`` / ``\cellcolor`` (``colortbl``) / ``\textbf``. PDF:
+   per-cell colour, fill and bold.
+
+.. py:class:: CellStyle(color=None, background=None, bold=False)
+
+   Frozen dataclass holding a cell's normalized style; false when empty.
 
 .. py:class:: Image(src, alt="", title="")
 
@@ -637,6 +674,9 @@ Invalid ``Raw`` format                               ``ValueError`` (constructio
 Malformed definition-list or task-list entry         ``ValueError`` (construction)
 ``save()`` with an unknown file extension            ``ValueError``
 ``keywords`` given as a single string                ``TypeError`` (construction)
+Bad ``widths``/``footer`` length, unknown colour     ``ValueError`` (construction)
+``Cell`` in table headers                            ``TypeError`` (construction)
+``styles`` function returning a non-dict             ``TypeError`` (construction)
 Bad header/footer template or numbering depth        ``ValueError`` (construction)
 Invalid section label                                ``ValueError`` (construction)
 Unknown HTML ``theme``                               ``ValueError`` (render)

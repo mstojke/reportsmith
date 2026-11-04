@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional, Union
 
 from ..elements import (
     Callout,
+    CellStyle,
     CodeBlock,
     Element,
     Figure,
@@ -25,6 +26,7 @@ from ..elements import (
     TableOfContents,
 )
 from ..assets import Assets, path_reference
+from ..colors import to_hex
 from ..highlight import latex_block, latex_style_defs, require_pygments
 from ..inline import Inline, InlineContent
 from ..numbering import LATEX_PREFIXES, KIND_NAMES, Numbering
@@ -47,6 +49,8 @@ DEFAULT_PREAMBLE = r"""\usepackage{iftex}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{longtable}
+\usepackage{array}
+\usepackage{colortbl}
 \usepackage{caption}
 \usepackage{amssymb}
 \usepackage{fancyvrb}
@@ -100,6 +104,10 @@ _SECTION_COMMANDS = {
     6: "subparagraph",
 }
 _ALIGN_SPEC = {"left": "l", "center": "c", "right": "r"}
+# Paragraph-column alignment for tables with widths (array package).
+_RAGGED = {"left": r"\raggedright", "center": r"\centering", "right": r"\raggedleft"}
+# Shading for every other body row of a striped table (colortbl).
+_STRIPE = r"\rowcolor[HTML]{F5F6F8}"
 # Frame and size of code blocks, shared with highlighted (Pygments) blocks.
 _VERBATIM_OPTIONS = r"frame=single, framesep=2mm, fontsize=\small"
 # Task list checkboxes (amssymb), keyed by "done".
@@ -357,26 +365,53 @@ class LatexRenderer:
     def _table(self, el: Table) -> str:
         if not el.headers:
             return ""
-        spec = "".join(_ALIGN_SPEC[a] for a in el.align)
+        if el.widths:
+            # Fixed-width columns that keep each column's alignment.
+            spec = "".join(
+                f">{{{_RAGGED[a]}\\arraybackslash}}p{{\\dimexpr {w:.4f}\\linewidth-2\\tabcolsep\\relax}}"
+                for a, w in zip(el.align, el.widths)
+            )
+        else:
+            spec = "".join(_ALIGN_SPEC[a] for a in el.align)
 
-        def row(cells: list[list[InlineContent]]) -> str:
-            return " & ".join(
-                self._cell(cell, _ALIGN_SPEC[a]) for cell, a in zip(cells, el.align)
+        def row(cells: list[list[InlineContent]], styles: list[CellStyle], prefix: str = "") -> str:
+            return prefix + " & ".join(
+                self._styled(self._cell(cell, _ALIGN_SPEC[a]), style)
+                for cell, a, style in zip(cells, el.align, styles)
             ) + " \\\\\n"
 
         out = [
             f"\\begin{{longtable}}{{{spec}}}\n",
             "\\toprule\n",
-            row(el.headers),
+            row(el.headers, [CellStyle()] * len(el.headers)),
             "\\midrule\n\\endhead\n",
         ]
-        out.extend(row(r) for r in el.rows)
+        for i, cells in enumerate(el.rows):
+            stripe = _STRIPE if el.striped and i % 2 == 1 else ""
+            out.append(row(cells, [el.style_at(i, j) for j in range(len(cells))], stripe))
+        if el.footer is not None:
+            footer_styles = [
+                CellStyle(s.color, s.background, True)
+                for s in (el.footer_styles.get(j, CellStyle()) for j in range(len(el.footer)))
+            ]
+            out.append("\\midrule\n")
+            out.append(row(el.footer, footer_styles))
         out.append("\\bottomrule\n")
         if el.caption:
             label = f"\\label{{tab:{el.label}}}" if el.label else ""
             out.append(f"\\caption{{{escape_latex(el.caption)}}}{label} \\\\\n")
         out.append("\\end{longtable}\n\n")
         return "".join(out)
+
+    @staticmethod
+    def _styled(text: str, style: CellStyle) -> str:
+        if style.bold and text:
+            text = f"\\textbf{{{text}}}"
+        if style.color:
+            text = f"\\textcolor[HTML]{{{to_hex(style.color)[1:].upper()}}}{{{text}}}"
+        if style.background:
+            text = f"\\cellcolor[HTML]{{{to_hex(style.background, True)[1:].upper()}}}{text}"
+        return text
 
     def _cell(self, parts: list[InlineContent], align: str) -> str:
         text = self._inline(parts)

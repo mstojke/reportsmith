@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 
 from ..elements import (
     Callout,
+    CellStyle,
     CodeBlock,
     Element,
     Figure,
@@ -25,6 +26,7 @@ from ..elements import (
     TableOfContents,
 )
 from ..assets import data_uri, path_reference
+from ..colors import BACKGROUND_COLORS, DARK_BACKGROUND_COLORS, DARK_TEXT_COLORS, TEXT_COLORS
 from ..highlight import html_css as highlight_css, html_spans, require_pygments
 from ..inline import Inline, InlineContent
 from ..numbering import HTML_PREFIXES, Numbering, iter_elements
@@ -46,7 +48,8 @@ _LIGHT_VARS = """\
   --important: #7c3aed;
   --warning: #b45309;
   --caution: #b91c1c;
-"""
+  --stripe: #f8f9fb;
+""" + "".join(f"  --cell-{n}: {TEXT_COLORS[n]};\n  --cell-bg-{n}: {BACKGROUND_COLORS[n]};\n" for n in TEXT_COLORS)
 _DARK_VARS = """\
   --text: #e5e7eb;
   --muted: #9ca3af;
@@ -59,7 +62,8 @@ _DARK_VARS = """\
   --important: #a78bfa;
   --warning: #fbbf24;
   --caution: #f87171;
-"""
+  --stripe: #182231;
+""" + "".join(f"  --cell-{n}: {DARK_TEXT_COLORS[n]};\n  --cell-bg-{n}: {DARK_BACKGROUND_COLORS[n]};\n" for n in TEXT_COLORS)
 _BASE_CSS = """\
 body {
   margin: 0 auto;
@@ -113,7 +117,13 @@ figure img { max-width: 100%; }
 figcaption, caption { color: var(--muted); font-size: 0.85rem; }
 figcaption { margin-top: 0.4em; }
 .caption-label { font-weight: 600; }
-"""
+table.striped tbody tr:nth-child(even) { background: var(--stripe); }
+tfoot td { font-weight: 600; border-top: 2px solid var(--muted); }
+td.cell-bold { font-weight: 600; }
+""" + "".join(
+    f".cell-{n} {{ color: var(--cell-{n}); }}\n.cell-bg-{n} {{ background: var(--cell-bg-{n}); }}\n"
+    for n in TEXT_COLORS
+)
 # Printing always uses the light colours, keeps blocks whole where it can,
 # and shows the target of external links.
 _PRINT_CSS = (
@@ -430,20 +440,47 @@ class HtmlRenderer:
         return "".join(out)
 
     def _table(self, el: Table) -> str:
-        out = [f"<table{self._target_id(el)}>\n"]
+        cls = ' class="striped"' if el.striped else ""
+        out = [f"<table{self._target_id(el)}{cls}>\n"]
         if el.caption:
             out.append(f"<caption>{self._caption(el)}</caption>\n")
+        if el.widths:
+            out.append("<colgroup>")
+            out.extend(f'<col style="width:{w * 100:.4g}%">' for w in el.widths)
+            out.append("</colgroup>\n")
         out.append("<thead>\n<tr>")
         for header, align in zip(el.headers, el.align):
             out.append(f'<th style="text-align:{align}">{self._inline(header)}</th>')
         out.append("</tr>\n</thead>\n<tbody>\n")
-        for row in el.rows:
+        for i, row in enumerate(el.rows):
             out.append("<tr>")
-            for cell, align in zip(row, el.align):
-                out.append(f'<td style="text-align:{align}">{self._inline(cell)}</td>')
+            for j, (cell, align) in enumerate(zip(row, el.align)):
+                out.append(self._td(cell, align, el.style_at(i, j)))
             out.append("</tr>\n")
-        out.append("</tbody>\n</table>\n")
+        out.append("</tbody>\n")
+        if el.footer is not None:
+            out.append("<tfoot>\n<tr>")
+            for j, (cell, align) in enumerate(zip(el.footer, el.align)):
+                out.append(self._td(cell, align, el.footer_styles.get(j, CellStyle())))
+            out.append("</tr>\n</tfoot>\n")
+        out.append("</table>\n")
         return "".join(out)
+
+    def _td(self, parts: list[InlineContent], align: str, style: CellStyle) -> str:
+        # Named colours are classes, so they follow the theme; hex values
+        # are inline styles.
+        classes, css = [], [f"text-align:{align}"]
+        if style.bold:
+            classes.append("cell-bold")
+        for value, prefix, prop in ((style.color, "cell-", "color"), (style.background, "cell-bg-", "background")):
+            if value is None:
+                continue
+            if value.startswith("#"):
+                css.append(f"{prop}:{value}")
+            else:
+                classes.append(prefix + value)
+        cls = f' class="{" ".join(classes)}"' if classes else ""
+        return f'<td{cls} style="{";".join(css)}">{self._inline(parts)}</td>'
 
     # -- inline ----------------------------------------------------------
 

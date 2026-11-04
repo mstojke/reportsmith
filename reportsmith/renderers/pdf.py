@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Optional, Sequence
 
 from ..elements import (
     Callout,
+    CellStyle,
     CodeBlock,
     Element,
     Figure,
@@ -38,6 +39,7 @@ from ..elements import (
     Table,
     TableOfContents,
 )
+from ..colors import to_rgb
 from ..highlight import pdf_tokens, require_pygments
 from ..inline import Inline, InlineContent
 from ..numbering import Numbering
@@ -62,6 +64,7 @@ _MUTED = (107, 114, 128)
 _ACCENT = (29, 78, 216)
 _BORDER = (183, 189, 196)
 _CODE_BG = (243, 244, 246)
+_STRIPE = (248, 249, 251)
 _CALLOUT_COLORS = {
     "note": (29, 78, 216),
     "tip": (21, 128, 61),
@@ -617,15 +620,45 @@ class PdfRenderer:
         pdf.set_font(self.body_family, "", 10)
         pdf.set_text_color(*_TEXT)
         pdf.set_draw_color(*_BORDER)
+        from fpdf.enums import TableCellFillMode
+        from fpdf.fonts import FontFace
+
         aligns = tuple(a.upper() for a in el.align)
-        with pdf.table(text_align=aligns, line_height=6, markdown=True) as table:
+        options: dict = {"text_align": aligns, "line_height": 6, "markdown": True}
+        if el.widths:
+            options["col_widths"] = tuple(el.widths)
+        if el.striped:
+            # EVEN_ROWS counts the header as row 0: it shades the header and
+            # every second body row, like the HTML output.
+            options["cell_fill_color"] = _STRIPE
+            options["cell_fill_mode"] = TableCellFillMode.EVEN_ROWS
+
+        def face(style: CellStyle, footer: bool = False) -> Optional[FontFace]:
+            if not (style or footer):
+                return None
+            fill = to_rgb(style.background, True) if style.background else None
+            if footer and fill is None and el.striped:
+                fill = (255, 255, 255)  # the footer is never striped
+            return FontFace(
+                emphasis="BOLD" if style.bold or footer else None,
+                color=to_rgb(style.color) if style.color else None,
+                fill_color=fill,
+            )
+
+        with pdf.table(**options) as table:
             header = table.row()
             for parts in el.headers:
                 header.cell(self._t(self._cell_text(pdf, parts, heading=True)))
-            for row_parts in el.rows:
+            for i, row_parts in enumerate(el.rows):
                 row = table.row()
-                for parts in row_parts:
-                    row.cell(self._t(self._cell_text(pdf, parts)))
+                for j, parts in enumerate(row_parts):
+                    row.cell(self._t(self._cell_text(pdf, parts)), style=face(el.style_at(i, j)))
+            if el.footer is not None:
+                row = table.row()
+                for j, parts in enumerate(el.footer):
+                    style = el.footer_styles.get(j, CellStyle())
+                    # Bold comes from the cell style, so bold markers would toggle it off.
+                    row.cell(self._t(self._cell_text(pdf, parts, heading=True)), style=face(style, footer=True))
         if el.caption:
             self._caption(pdf, el)
         pdf.ln(2.5)
