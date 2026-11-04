@@ -2,7 +2,7 @@
 
 `reportsmith` lets you build a report programmatically from typed elements and export it to **Markdown**, a **standalone styled HTML page**, **LaTeX**, or **PDF**. It has no dependencies and works on Python 3.9+.
 
-This guide walks through every feature. For a terse signature-level listing, see the [API reference](api-reference.rst).
+This guide walks through every feature. For a terse signature-level listing, see the [API reference](api-reference.rst). To see finished reports in every format, browse the [examples site](https://mstojke.github.io/reportsmith/).
 
 ## Contents
 
