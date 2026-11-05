@@ -44,6 +44,7 @@ from ..colors import to_rgb
 from ..equations import SCRIPT_FALLBACK, render_equation, tex_to_unicode, to_latin1
 from ..highlight import pdf_tokens, require_pygments
 from ..inline import Inline, InlineContent
+from ..labels import callout_title, labels_for, toc_title
 from ..numbering import Numbering
 from ..page import segments
 from ..toc import collect_entries, find_tocs, plain_text
@@ -173,7 +174,9 @@ class PdfRenderer:
         self._setup_fonts(pdf)
         # fpdf2 supports one TOC per document, so only the first is rendered.
         self._numbering = Numbering(report)
+        self._labels = labels_for(report)
         self._toc = next(find_tocs(report), None)
+        self._toc_title = toc_title(self._toc, self._labels) if self._toc else ""
         self._toc_entries = (
             collect_entries(report, self._toc.depth, self._numbering) if self._toc else []
         )
@@ -296,8 +299,9 @@ class PdfRenderer:
             except Exception:
                 pdf.set_font(self.body_family, "I", 10)
                 pdf.set_text_color(*_MUTED)
-                pdf.multi_cell(0, 6, self._t(f"[Logo: {logo.source if logo.kind == 'path' else 'image'}]"),
-                               align="C", new_x="LMARGIN", new_y="NEXT")
+                name = self._labels["logo"]
+                shown = f"[{name}: {logo.source}]" if logo.kind == "path" else f"[{name}]"
+                pdf.multi_cell(0, 6, self._t(shown), align="C", new_x="LMARGIN", new_y="NEXT")
             pdf.ln(6)
         if cover.organization:
             pdf.set_font(self.body_family, "B", 13)
@@ -425,7 +429,7 @@ class PdfRenderer:
             y += h
 
         assert self._toc is not None  # only called while rendering a TOC
-        if self._toc.title:
+        if self._toc_title:
             advance(_TOC_TITLE_H)
             y += 2
         for _ in self._toc_entries:
@@ -440,10 +444,10 @@ class PdfRenderer:
         assert self._toc is not None
         pdf.set_x(pdf.l_margin)  # fpdf2 restores only the y of the reserved space
         pdf.set_text_color(*_TEXT)
-        if self._toc.title:
+        if self._toc_title:
             make_room(_TOC_TITLE_H)
             pdf.set_font(self.body_family, "B", _HEADING_SIZES[2])
-            pdf.cell(0, _TOC_TITLE_H, self._t(self._toc.title), new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, _TOC_TITLE_H, self._t(self._toc_title), new_x="LMARGIN", new_y="NEXT")
             pdf.ln(2)
         for entry in self._toc_entries:
             make_room(_TOC_ROW_H)
@@ -479,7 +483,7 @@ class PdfRenderer:
         pdf.set_x(root + 5)
         pdf.set_font(self.body_family, "B", BODY_SIZE)
         pdf.set_text_color(*color)
-        pdf.multi_cell(0, 6.5, self._t(el.display_title), new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(0, 6.5, self._t(callout_title(el, self._labels)), new_x="LMARGIN", new_y="NEXT")
         for child in el.children:
             self._element(pdf, child)
         end_page, end_y = pdf.page_no(), pdf.get_y()
@@ -707,8 +711,10 @@ class PdfRenderer:
             # Missing/unreadable file: render a placeholder, keep going.
             pdf.set_font(self.body_family, "I", 10)
             pdf.set_text_color(*_MUTED)
-            missing = el.alt or (str(el.source) if el.kind == "path" else "figure")
-            pdf.multi_cell(0, 6, self._t(f"[Figure: {missing}]"), new_x="LMARGIN", new_y="NEXT")
+            missing = el.alt or (str(el.source) if el.kind == "path" else "")
+            name = self._labels["figure"]
+            pdf.multi_cell(0, 6, self._t(f"[{name}: {missing}]" if missing else f"[{name}]"),
+                           new_x="LMARGIN", new_y="NEXT")
         if el.caption:
             self._caption(pdf, el, align="C")
         pdf.ln(2.5)
@@ -786,7 +792,8 @@ class PdfRenderer:
             # Missing/remote/unreadable file: render a placeholder, keep going.
             pdf.set_font(self.body_family, "I", 10)
             pdf.set_text_color(*_MUTED)
-            pdf.multi_cell(0, 6, self._t(f"[Image: {el.alt or el.src}]"), new_x="LMARGIN", new_y="NEXT")
+            pdf.multi_cell(0, 6, self._t(f"[{self._labels['image']}: {el.alt or el.src}]"),
+                           new_x="LMARGIN", new_y="NEXT")
         else:
             if el.title:
                 pdf.set_font(self.body_family, "I", 9)
@@ -916,8 +923,9 @@ class PdfRenderer:
 
     def _endnotes(self, pdf) -> None:
         self._keep_with_next(pdf)
-        pdf.start_section(self._t("Notes"), level=0)
-        self._heading(pdf, ["Notes"], 2)
+        notes = self._labels["notes"]
+        pdf.start_section(self._t(notes), level=0)
+        self._heading(pdf, [notes], 2)
         for n, (text, link) in enumerate(self._footnotes, start=1):
             pdf.set_link(link, y=pdf.get_y(), page=pdf.page_no())
             pdf.set_font(self.body_family, "", 10)

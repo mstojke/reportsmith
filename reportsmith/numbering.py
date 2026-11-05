@@ -14,12 +14,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Iterator, Optional, Union
 
 from .elements import Container, Element, Equation, Figure, Heading, Section, Table
+from .labels import labels_for
 from .toc import heading_depth, iter_headings, plain_text
 
 if TYPE_CHECKING:
     from .report import Report
 
-#: Display names, and the prefixes used for HTML ids and LaTeX labels.
+#: English display names (see :mod:`reportsmith.labels` for translations),
+#: and the prefixes used for HTML ids and LaTeX labels.
 KIND_NAMES = {"figure": "Figure", "table": "Table", "section": "Section", "equation": "Equation"}
 HTML_PREFIXES = {"figure": "fig", "table": "tbl", "section": "sec", "equation": "eq"}
 LATEX_PREFIXES = {"figure": "fig", "table": "tab", "section": "sec", "equation": "eq"}
@@ -53,6 +55,7 @@ class Numbering:
         # label -> (kind, number); a section's "number" may be "" (unnumbered)
         self._labels: dict[str, tuple[str, Union[int, str]]] = {}
         self._titles: dict[str, str] = {}  # section label -> plain title
+        self._names = labels_for(report)
 
         depth = report.section_numbers if section_depth is None else section_depth
         if depth:
@@ -96,7 +99,7 @@ class Numbering:
     def caption_label(self, el: Captioned) -> str:
         """``"Figure 2"`` / ``"Table 1"``, or ``""`` for unnumbered items."""
         n = self.number(el)
-        return f"{KIND_NAMES[kind_of(el)]} {n}" if n else ""
+        return f"{self.kind_name(kind_of(el))} {n}" if n else ""
 
     def equation_number(self, el: Equation) -> int:
         """The equation's number, or 0 if it isn't numbered (no label)."""
@@ -128,4 +131,8 @@ class Numbering:
             return text
         if kind == "section" and not number:
             return self._titles[label]
-        return f"{KIND_NAMES[kind]} {number}"
+        return f"{self.kind_name(kind)} {number}"
+
+    def kind_name(self, kind: str) -> str:
+        """"Figure", "Table", "Section" or "Equation", in the report's language."""
+        return self._names[kind]

@@ -6,7 +6,7 @@ This guide walks through every feature. For a terse signature-level listing, see
 
 ## Contents
 
-1. [Creating a report](#creating-a-report) — including [metadata](#metadata) and [cover pages](#cover-page)
+1. [Creating a report](#creating-a-report) — including [metadata](#metadata), [language and labels](#language-and-labels) and [cover pages](#cover-page)
 2. [Sections](#sections) — including [section numbering](#section-numbering) and [reusing and merging content](#reusing-and-merging-content)
 3. [Text and inline formatting](#text-and-inline-formatting) — including [footnotes](#footnotes)
 4. [Tables](#tables) — including [table styling](#table-styling) and [tables from data](#tables-from-data)
@@ -70,6 +70,33 @@ report = Report(
 | Markdown | Only with `to_markdown(front_matter=True)` / `save_markdown(..., front_matter=True)`: a YAML block at the top (`title`, `subtitle`, `author`, `date`, `description`, `keywords`, `lang`) for static-site generators such as Jekyll, Hugo, or MkDocs. |
 
 `keywords` must be a list (or other sequence) of strings; a single string raises `TypeError`.
+
+### Language and labels
+
+`language` also sets the words reportsmith writes itself: caption and reference names ("Figure 1", "Table 2", "Equation 1", "Section 3"), the table of contents title, callout titles, "Author:" / "Date:" in the title block, and the PDF's "Notes" section for footnotes.
+
+```python
+report = Report("Raport kwartalny", author="Dział analiz", language="pl")
+# Captions read "Rysunek 1" and "Tabela 1", the TOC is titled "Spis treści",
+# a warning callout is titled "Ostrzeżenie".
+```
+
+Included languages: Czech (`cs`), Dutch (`nl`), English (`en`), French (`fr`), German (`de`), Italian (`it`), Polish (`pl`), Portuguese (`pt`), Spanish (`es`) and Swedish (`sv`). Only the primary subtag counts, so `"de-CH"` and `"pt_BR"` work too; any other language uses the English labels.
+
+`labels=` overrides single labels — to shorten them, fix a wording you prefer, or add a language that isn't included:
+
+```python
+Report("Q3 Report", labels={"figure": "Fig.", "section": "§"})
+Report("Kvartalsrapport", language="da", labels={"figure": "Figur", "table": "Tabel", "contents": "Indhold"})
+```
+
+The keys are `figure`, `table`, `equation`, `section`, `contents`, `notes`, `author`, `date`, `note`, `tip`, `important`, `warning`, `caution`, `image` and `logo` (placeholders for missing images), and `back_to_reference` (the HTML footnote back-link's accessible name); an unknown key raises `ValueError`. `reportsmith.labels.TRANSLATIONS` holds the built-in tables.
+
+A title you pass yourself — `toc(title=...)`, `callout(..., title=...)` — is used as given; leave it out to get the label. `toc(title="")` still means no title.
+
+- **LaTeX** sets `\figurename`, `\tablename` and `\contentsname` to the labels, so LaTeX's own captions match. It doesn't load `babel`, whose language files aren't part of every TeX installation, so hyphenation stays English; add `preamble="\\usepackage[polish]{babel}"` (with the matching TeX Live language package) for proper hyphenation, keeping in mind that babel then sets those names itself.
+- **Markdown** callouts use GitHub's alert syntax, which shows GitHub's own English heading ("Note"); pass `title=` to add one in your language.
+- Dates are shown as given (ISO by default) and aren't localized.
 
 ### Cover page
 
@@ -497,7 +524,7 @@ with report.callout("warning", title="Breaking change") as c:
 
 `content`, if given, becomes the callout's first paragraph. `callout()` returns the new callout (not the container), so more content can be added — paragraphs, lists, code, tables, images, headings, even nested callouts. Sections and tables of contents aren't allowed inside a callout (they raise `TypeError`), so callouts never change the document outline; headings inside one stay out of the table of contents.
 
-The title defaults to the capitalized kind ("Warning"). Rendering:
+The title defaults to the kind's label in the report's language ("Warning"; "Ostrzeżenie" with `language="pl"` — see [Language and labels](#language-and-labels)). Rendering:
 
 | Format | Output |
 | --- | --- |
@@ -508,7 +535,7 @@ The title defaults to the capitalized kind ("Warning"). Rendering:
 
 ## Table of contents
 
-`toc(title="Contents", depth=3)` adds a table of contents listing every section and explicit heading in the report, in document order. It always covers the whole report, so it can go anywhere — usually right after creating the report:
+`toc(title=None, depth=3)` adds a table of contents (titled "Contents", or its translation — see [Language and labels](#language-and-labels)) listing every section and explicit heading in the report, in document order. It always covers the whole report, so it can go anywhere — usually right after creating the report:
 
 ```python
 report = Report("Q3 Sales Report")

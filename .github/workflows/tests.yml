@@ -164,6 +164,7 @@ jobs:
           python examples/table_styling_example.py
           python examples/cover_example.py
           python examples/math_example.py
+          python examples/labels_example.py
 
       - name: Compile with ${{ matrix.engine }}
         run: |

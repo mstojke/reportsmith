@@ -30,6 +30,7 @@ from ..assets import data_uri, path_reference
 from ..colors import BACKGROUND_COLORS, DARK_BACKGROUND_COLORS, DARK_TEXT_COLORS, TEXT_COLORS
 from ..highlight import html_css as highlight_css, html_spans, require_pygments
 from ..inline import Inline, InlineContent
+from ..labels import callout_title, labels_for, toc_title
 from ..numbering import HTML_PREFIXES, Numbering, iter_elements
 from ..page import segments
 from ..toc import TocEntry, build_tree, collect_entries, find_tocs, heading_anchors
@@ -332,6 +333,7 @@ class HtmlRenderer:
     def _body(self, report: "Report") -> str:
         self._report = report
         self._numbering = Numbering(report)
+        self._labels = labels_for(report)
         # Headings only get ids when there is a TOC or a ref() to link to
         # them, so output for other reports is unchanged.
         has_toc = any(find_tocs(report))
@@ -339,7 +341,7 @@ class HtmlRenderer:
         for el in iter_elements(report):
             if isinstance(el, Section) and el.label:
                 self._anchors[id(el)] = f"sec-{el.label}"
-        parts = [self._cover(report) if report.cover is not None else self._title_block(report)]
+        parts = [self._cover(report) if report.cover is not None else self._title_block(report, self._labels)]
         self._footnotes: list[str] = []
         for child in report.children:
             parts.append(self._render_element(child))
@@ -348,7 +350,7 @@ class HtmlRenderer:
             for n, text in enumerate(self._footnotes, start=1):
                 parts.append(
                     f'<li id="fn-{n}">{escape(text)} <a href="#fnref-{n}" '
-                    f'class="footnote-back" aria-label="Back to reference {n}">&#8617;&#xFE0E;</a></li>\n'
+                    f'class="footnote-back" aria-label="{escape(self._labels["back_to_reference"], quote=True)} {n}">&#8617;&#xFE0E;</a></li>\n'
                 )
             parts.append("</ol>\n</section>\n")
         return "".join(parts)
@@ -359,15 +361,15 @@ class HtmlRenderer:
         return mathjax_tags(MATHJAX_URL if self.mathjax is True else str(self.mathjax))
 
     @staticmethod
-    def _title_block(report: "Report") -> str:
+    def _title_block(report: "Report", labels: dict) -> str:
         out = f"<h1>{escape(report.title)}</h1>\n"
         meta = []
         if report.subtitle:
             meta.append(f'<div class="subtitle">{escape(report.subtitle)}</div>')
         if report.author:
-            meta.append(f"<div><strong>Author:</strong> {escape(report.author)}</div>")
+            meta.append(f"<div><strong>{escape(labels['author'])}:</strong> {escape(report.author)}</div>")
         if report.date:
-            meta.append(f"<div><strong>Date:</strong> {escape(report.date)}</div>")
+            meta.append(f"<div><strong>{escape(labels['date'])}:</strong> {escape(report.date)}</div>")
         if meta:
             out += '<div class="report-meta">\n' + "\n".join(meta) + "\n</div>\n"
         return out
@@ -466,7 +468,7 @@ class HtmlRenderer:
         if isinstance(el, Callout):
             out = [
                 f'<div class="callout callout-{el.kind}">\n',
-                f'<p class="callout-title">{escape(el.display_title)}</p>\n',
+                f'<p class="callout-title">{escape(callout_title(el, self._labels))}</p>\n',
             ]
             out.extend(self._render_element(child) for child in el.children)
             out.append("</div>\n")
@@ -483,10 +485,11 @@ class HtmlRenderer:
         return f' id="{escape(anchor, quote=True)}"' if anchor else ""
 
     def _toc(self, el: TableOfContents) -> str:
-        label = escape(el.title or "Contents", quote=True)
+        title = toc_title(el, self._labels)
+        label = escape(title or self._labels["contents"], quote=True)
         out = [f'<nav class="toc" aria-label="{label}">\n']
-        if el.title:
-            out.append(f'<div class="toc-title">{escape(el.title)}</div>\n')
+        if title:
+            out.append(f'<div class="toc-title">{escape(title)}</div>\n')
 
         def walk(entries: list[TocEntry]) -> None:
             out.append("<ul>\n")

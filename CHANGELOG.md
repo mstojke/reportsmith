@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [0.8] - 2026-11-05
+
 ### Added
 
 - Cover pages: `Report(cover=True)` puts the title, subtitle, author and
@@ -30,6 +33,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Unicode text ("α² ≤ π").
 - `examples/math_example.py`, on the examples site and compiled by the CI
   LaTeX job.
+  - Built-in labels in the report's language: `Report(language="pl")` writes
+  "Rysunek 1", "Tabela 1", "Równanie 1", "Spis treści", "Uwaga", "Autor:"
+  and so on. Czech, Dutch, English, French, German, Italian, Polish,
+  Portuguese, Spanish and Swedish are included (by primary subtag, so
+  `"de-CH"` works); other languages use English. `Report(labels={...})`
+  overrides single labels, e.g. `{"figure": "Fig."}`. LaTeX output sets
+  `\figurename`, `\tablename` and `\contentsname` to match.
+- `examples/labels_example.py`, on the examples site and compiled by the CI
+  LaTeX job.
+
+### Changed
+
+- `toc()` and `TableOfContents` default to `title=None`, meaning the
+  report's "Contents" label; passing a title (or `""` for none) works as
+  before. Callout titles likewise default to the label for their kind.
 
 ## [0.7.1] - 2026-11-04
 

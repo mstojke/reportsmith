@@ -26,6 +26,7 @@ A small, dependency-free Python library for building reports programmatically an
 - HTML export ships with a clean embedded stylesheet — automatic, light, or dark theme, plus a print stylesheet — that you can extend or replace with your own CSS
 - Optional syntax highlighting of code blocks in HTML, LaTeX, and PDF (`pip install reportsmith[highlight]`, via Pygments)
 - Document metadata (author, description, keywords, language) in HTML `<meta>` tags, PDF properties, LaTeX PDF fields, and optional Markdown front matter
+- Built-in labels ("Figure", "Contents", "Note", ...) in the report's language — Czech, Dutch, English, French, German, Italian, Polish, Portuguese, Spanish, Swedish — with `labels=` to override any of them
 - Reusable content: build sections on their own and `add()` them anywhere, or `extend()` one report with another — heading levels adapt, and `label_prefix` keeps cross-references working
 - LaTeX export: a compilable document (pdfLaTeX/XeLaTeX/LuaLaTeX) with booktabs tables, framed code blocks, hyperlinks, and PDF bookmarks — or a body fragment to `\input` into your own document
 - Optional PDF export (`pip install reportsmith[pdf]`, via fpdf2): matching styling, PDF bookmarks from sections, clickable links, auto-detected Unicode system fonts
@@ -88,6 +89,7 @@ The **[examples site](https://mstojke.github.io/reportsmith/)** shows every exam
 | [Headers, footers and section numbering](https://mstojke.github.io/reportsmith/#headers-footers-and-section-numbering) | Page numbers, running headers, numbered sections |
 | [Cover page](https://mstojke.github.io/reportsmith/#cover-page) | A title page with a logo, organization and note |
 | [Math](https://mstojke.github.io/reportsmith/#math) | Inline math, numbered equations, references to them |
+| [Translated labels](https://mstojke.github.io/reportsmith/#translated-labels) | A Polish report: captions, TOC and callouts in the report's language |
 | [Merging, metadata and highlighting](https://mstojke.github.io/reportsmith/#merging-metadata-and-highlighting) | Combining reports, themes, syntax highlighting |
 
 The sources are in [`examples/`](https://github.com/mstojke/reportsmith/tree/main/examples). The site is rebuilt from `main` on every push by the [Examples site workflow](https://github.com/mstojke/reportsmith/actions/workflows/pages.yml).
@@ -113,7 +115,7 @@ Then open `docs/_build/html/index.html`.
 
 ### `Report(title, author="", date=None, subtitle="", ..., cover=False)`
 
-`date` accepts a string, `datetime.date`, or `datetime.datetime`; it defaults to today. `cover=True` (or `cover=Cover(logo=..., organization=..., note=...)`) puts the title on a cover page of its own.
+`date` accepts a string, `datetime.date`, or `datetime.datetime`; it defaults to today. `cover=True` (or `cover=Cover(logo=..., organization=..., note=...)`) puts the title on a cover page of its own. `language="pl"` (and nine other languages) translates the built-in labels; `labels={"figure": "Fig."}` overrides single ones.
 
 Builder methods (all chainable, also available on sections):
 
@@ -135,7 +137,7 @@ Builder methods (all chainable, also available on sections):
 | `image(src, alt="", title="")` | Image (unnumbered; may be a remote URL) |
 | `horizontal_rule()` | Rule |
 | `raw(content, format="both")` | Verbatim content for `"markdown"`, `"html"`, `"latex"`, or `"both"` (Markdown + HTML) |
-| `toc(title="Contents", depth=3)` | Table of contents for the whole report; `depth` 1–5 sets how many heading levels are listed |
+| `toc(title=None, depth=3)` | Table of contents for the whole report, titled "Contents" in the report's language unless `title` is given; `depth` 1–5 sets how many heading levels are listed |
 | `callout(kind="note", content=None, title="")` | Callout box (`"note"`, `"tip"`, `"important"`, `"warning"`, `"caution"`); returns the callout, usable as a context manager |
 | `add(element)` | Any pre-built element; a standalone `Section` or `Callout` is re-levelled to fit |
 | `extend(source, label_prefix="")` | Copies of another report's / section's content (or a list of elements), re-levelled; `label_prefix` renames labels and their `ref()`s |

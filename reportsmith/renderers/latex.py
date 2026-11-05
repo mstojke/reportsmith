@@ -31,7 +31,8 @@ from ..colors import to_hex
 from ..equations import tex_to_ascii
 from ..highlight import latex_block, latex_style_defs, require_pygments
 from ..inline import Inline, InlineContent
-from ..numbering import LATEX_PREFIXES, KIND_NAMES, Numbering
+from ..labels import callout_title, labels_for, toc_title
+from ..numbering import LATEX_PREFIXES, Numbering
 from ..page import segments
 
 if TYPE_CHECKING:
@@ -170,6 +171,7 @@ class LatexRenderer:
         # numbered=True keeps working: LaTeX's usual three levels.
         self._depth = report.section_numbers or (3 if self.numbered else 0)
         self._numbering = Numbering(report, section_depth=self._depth)
+        self._labels = labels_for(report)
         self._in_callout = 0
         self._assets = Assets(self.assets_dir, self.assets_url) if self.assets_dir is not None else None
         body = "".join(self._render_element(child) for child in report.children)
@@ -196,6 +198,13 @@ class LatexRenderer:
         setup = ", ".join(f"{key}={{{escape_latex(value)}}}" for key, value in fields if value or key == "pdfauthor")
         parts.append(f"\\hypersetup{{{setup}}}\n")
         parts.append(self._page_style(report))
+        # LaTeX's own names for captions and the TOC, in the report's language
+        # (without babel, whose language files aren't always installed).
+        parts.append(
+            f"\\renewcommand{{\\figurename}}{{{escape_latex(self._labels['figure'])}}}\n"
+            f"\\renewcommand{{\\tablename}}{{{escape_latex(self._labels['table'])}}}\n"
+            f"\\renewcommand{{\\contentsname}}{{{escape_latex(self._labels['contents'])}}}\n"
+        )
         if self.highlight:
             parts.append(latex_style_defs())
         if self.preamble:
@@ -267,7 +276,7 @@ class LatexRenderer:
             # Grouped so the renamed heading stays local to this TOC. Our
             # depth 1 (top-level sections) is LaTeX's tocdepth 1 (\section).
             return (
-                f"{{\\renewcommand{{\\contentsname}}{{{escape_latex(el.title)}}}"
+                f"{{\\renewcommand{{\\contentsname}}{{{escape_latex(toc_title(el, self._labels))}}}"
                 f"\\setcounter{{tocdepth}}{{{el.depth}}}\\tableofcontents}}\n\n"
             )
         if isinstance(el, Callout):
@@ -275,7 +284,7 @@ class LatexRenderer:
             body = "".join(self._render_element(child) for child in el.children)
             self._in_callout -= 1
             return (
-                f"\\begin{{rscallout}}{{rs{el.kind}}}{{{escape_latex(el.display_title)}}}\n"
+                f"\\begin{{rscallout}}{{rs{el.kind}}}{{{escape_latex(callout_title(el, self._labels))}}}\n"
                 f"{body.rstrip(chr(10))}\n"
                 "\\end{rscallout}\n\n"
             )
@@ -485,7 +494,8 @@ class LatexRenderer:
         if el.src.startswith(("http://", "https://")):
             # LaTeX can't embed remote images; link to them instead.
             label = escape_latex(caption or el.src)
-            return f"\\href{{{_escape_url(el.src)}}}{{[Image: {label}]}}\n\n"
+            image = escape_latex(self._labels["image"])
+            return f"\\href{{{_escape_url(el.src)}}}{{[{image}: {label}]}}\n\n"
         out = ["\\begin{figure}[htbp]\n\\centering\n", f"\\includegraphics{{{el.src}}}\n"]
         if caption:
             out.append(f"\\caption*{{{escape_latex(caption)}}}\n")
@@ -534,7 +544,7 @@ class LatexRenderer:
                 # Unnumbered sections are referred to by title.
                 shown = escape_latex(self._numbering.ref_text(span.href))
             else:
-                shown = f"{KIND_NAMES[kind]}~\\ref*{{{target}}}"
+                shown = f"{escape_latex(self._numbering.kind_name(kind))}~\\ref*{{{target}}}"
             return f"\\hyperref[{target}]{{{shown}}}"
         if span.style == "footnote":
             return f"\\footnote{{{text}}}"

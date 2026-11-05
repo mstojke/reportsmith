@@ -36,6 +36,7 @@ EXAMPLES = [
     ("examples/pages_example.py", "headers-footers-numbering", "Headers, footers and section numbering"),
     ("examples/cover_example.py", "cover-page", "Cover page"),
     ("examples/math_example.py", "math", "Math"),
+    ("examples/labels_example.py", "translated-labels", "Translated labels"),
     ("examples/merge_example.py", "merging-and-highlighting", "Merging, metadata and highlighting"),
 ]
 

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import datetime as _dt
 from pathlib import Path
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Mapping, Optional, Sequence, Union
 
 from .cover import Cover, make_cover
 from .elements import Container
+from .labels import check_labels
 from .page import parse_band
 
 
@@ -23,6 +24,12 @@ class Report(Container):
     ``description``, ``keywords`` and ``language`` are document metadata:
     HTML ``<meta>`` tags and ``lang``, PDF document properties, LaTeX's PDF
     fields, and optional Markdown front matter.
+
+    ``language`` also sets the built-in labels ("Figure", "Contents",
+    "Note", ...): Czech, Dutch, English, French, German, Italian, Polish,
+    Portuguese, Spanish and Swedish are included, and other languages use
+    English. ``labels`` overrides single labels, e.g. ``{"figure": "Fig."}``;
+    see :mod:`reportsmith.labels` for the keys.
 
     ``header`` and ``footer`` are running page headers/footers for PDF,
     LaTeX and printed HTML: a string (centred) or a ``(left, centre,
@@ -54,6 +61,7 @@ class Report(Container):
         footer: Union[None, str, Sequence[str]] = "{page}",
         section_numbers: Union[bool, int] = False,
         cover: Union[None, bool, Cover] = False,
+        labels: Optional[Mapping[str, str]] = None,
     ):
         super().__init__()
         self.title = title
@@ -64,6 +72,7 @@ class Report(Container):
             raise TypeError("keywords must be a sequence of strings, not a single string")
         self.keywords = [str(k) for k in keywords]
         self.language = language
+        self.labels = check_labels(labels)
         self.header = parse_band(header, "header")
         self.footer = parse_band(footer, "footer")
         if isinstance(section_numbers, bool):

@@ -30,7 +30,7 @@ Type aliases
 Report
 ======
 
-.. py:class:: Report(title, author="", date=None, subtitle="", description="", keywords=(), language="en", header=None, footer="{page}", section_numbers=False, cover=False)
+.. py:class:: Report(title, author="", date=None, subtitle="", description="", keywords=(), language="en", header=None, footer="{page}", section_numbers=False, cover=False, labels=None)
 
    Top-level container.
 
@@ -47,7 +47,16 @@ Report
    :param keywords: Sequence of strings: HTML ``<meta name="keywords">``,
       PDF keywords, LaTeX ``pdfkeywords``, Markdown front matter.
    :param str language: Language tag: HTML ``lang``, PDF language, LaTeX
-      ``pdflang``, Markdown front matter ``lang``.
+      ``pdflang``, Markdown front matter ``lang``. Also picks the built-in
+      labels ("Figure", "Contents", "Note", ...): ``cs``, ``de``, ``en``,
+      ``es``, ``fr``, ``it``, ``nl``, ``pl``, ``pt`` and ``sv`` are
+      included (by primary subtag); others use English.
+   :param labels: Mapping overriding single labels, e.g. ``{"figure":
+      "Fig."}``. Keys: ``figure``, ``table``, ``equation``, ``section``,
+      ``contents``, ``notes``, ``author``, ``date``, ``note``, ``tip``,
+      ``important``, ``warning``, ``caution``, ``image``, ``logo``,
+      ``back_to_reference``. Unknown keys raise ``ValueError``; non-string
+      values ``TypeError``. See ``reportsmith.labels``.
    :param header: Running header for PDF, LaTeX and printed HTML: a string
       (centred) or a ``(left, centre, right)`` tuple, with ``{page}``,
       ``{pages}``, ``{title}``, ``{subtitle}``, ``{author}`` and ``{date}``
@@ -243,7 +252,7 @@ Container (builder API)
 
       Add a :class:`Raw` passthrough block.
 
-   .. py:method:: toc(title="Contents", depth=3) -> Container
+   .. py:method:: toc(title=None, depth=3) -> Container
 
       Add a :class:`TableOfContents` for the whole report.
 
@@ -494,12 +503,13 @@ render-agnostic.
 
    .. warning:: Content is **not escaped** — pass trusted content only.
 
-.. py:class:: TableOfContents(title="Contents", depth=3)
+.. py:class:: TableOfContents(title=None, depth=3)
 
    Lists every :class:`Section` and :class:`Heading` in the report, in
    document order, wherever the element is placed. ``depth`` limits the
-   levels listed (1 = top-level sections only); an empty ``title`` omits
-   the title line.
+   levels listed (1 = top-level sections only). ``title=None`` uses the
+   report's "contents" label ("Contents", "Spis treści", ...); an empty
+   ``title`` omits the title line.
 
    Markdown: bold title plus a nested list of links to GitHub-style heading
    anchors. HTML: ``<nav class="toc">`` with nested links; headings gain
@@ -518,8 +528,8 @@ render-agnostic.
    :param str kind: ``"note"``, ``"tip"``, ``"important"``, ``"warning"``
       or ``"caution"``.
    :param content: Optional ``TextLike``; becomes the first paragraph.
-   :param str title: Shown above the content; defaults to the capitalized
-      kind (see ``display_title``).
+   :param str title: Shown above the content; defaults to the kind's label
+      in the report's language ("Warning", "Ostrzeżenie", ...).
    :raises ValueError: for any other ``kind``.
    :raises TypeError: from ``section()``, ``toc()``, or ``add()`` with a
       :class:`Section` or :class:`TableOfContents` — callouts never affect

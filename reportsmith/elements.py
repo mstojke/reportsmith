@@ -459,10 +459,12 @@ class TableOfContents(Element):
 
     Always covers the whole report, wherever it is placed. ``depth`` limits
     how many heading levels are listed: 1 lists only top-level sections, 2
-    adds their subsections, and so on (up to 5).
+    adds their subsections, and so on (up to 5). ``title=None`` (default)
+    uses the report's "Contents" label, in its language; ``""`` means no
+    title.
     """
 
-    def __init__(self, title: str = "Contents", depth: int = 3):
+    def __init__(self, title: Optional[str] = None, depth: int = 3):
         if not 1 <= depth <= 5:
             raise ValueError(f"TOC depth must be 1-5, got {depth}")
         self.title = title
@@ -643,7 +645,7 @@ class Container(Element):
         self.children.append(Raw(content, format))
         return self
 
-    def toc(self, title: str = "Contents", depth: int = 3) -> "Container":
+    def toc(self, title: Optional[str] = None, depth: int = 3) -> "Container":
         """Add a table of contents for the whole report."""
         self.children.append(TableOfContents(title, depth))
         return self
@@ -687,7 +689,8 @@ class Callout(Container):
     """A highlighted box — note, tip, important, warning or caution —
     holding block content (paragraphs, lists, code, tables, ...).
 
-    ``title`` defaults to the capitalized kind. Supports ``with`` syntax
+    ``title`` defaults to the kind's label in the report's language
+    ("Note", "Uwaga", ...). Supports ``with`` syntax
     like :class:`Section`. Callouts can't contain sections or a table of
     contents, so they never affect the document outline.
     """
@@ -722,7 +725,7 @@ class Callout(Container):
     def section(self, title: TextLike, label: str = "") -> "Section":
         raise TypeError("A callout cannot contain sections; use heading() instead")
 
-    def toc(self, title: str = "Contents", depth: int = 3) -> "Container":
+    def toc(self, title: Optional[str] = None, depth: int = 3) -> "Container":
         raise TypeError("A callout cannot contain a table of contents")
 
     def __enter__(self) -> "Callout":

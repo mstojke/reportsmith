@@ -29,6 +29,7 @@ from ..elements import (
 )
 from ..assets import Assets, data_uri, path_reference
 from ..inline import Inline, InlineContent
+from ..labels import labels_for, toc_title
 from ..numbering import Numbering
 from ..toc import TocEntry, build_tree, collect_entries, heading_anchors, plain_text
 
@@ -59,6 +60,7 @@ class MarkdownRenderer:
     def render(self, report: "Report") -> str:
         self._report = report
         self._numbering = Numbering(report)
+        self._labels = labels_for(report)
         self._assets = Assets(self.assets_dir, self.assets_url) if self.assets_dir is not None else None
         self._anchors = heading_anchors(report, self._numbering)
         self._footnotes: list[str] = []
@@ -119,9 +121,9 @@ class MarkdownRenderer:
         if report.subtitle:
             lines.append(f"*{report.subtitle}*  ")
         if report.author:
-            lines.append(f"**Author:** {report.author}  ")
+            lines.append(f"**{self._labels['author']}:** {report.author}  ")
         if report.date:
-            lines.append(f"**Date:** {report.date}  ")
+            lines.append(f"**{self._labels['date']}:** {report.date}  ")
         return lines
 
     # -- elements --------------------------------------------------------
@@ -196,7 +198,8 @@ class MarkdownRenderer:
         return "\n".join(f"> {line}" if line else ">" for line in lines)
 
     def _toc(self, el: TableOfContents) -> list[str]:
-        blocks = [f"**{el.title}**"] if el.title else []
+        title = toc_title(el, self._labels)
+        blocks = [f"**{title}**"] if title else []
         lines: list[str] = []
 
         def walk(entries: list[TocEntry], indent: int) -> None:
