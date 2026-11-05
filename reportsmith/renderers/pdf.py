@@ -192,7 +192,11 @@ class PdfRenderer:
         if report.language:
             pdf.set_lang(report.language)
         pdf.set_creator(f"reportsmith {__version__}")
-        self._title_block(pdf, report)
+        if report.cover is not None:
+            self._cover(pdf, report)
+            pdf.add_page()
+        else:
+            self._title_block(pdf, report)
         for child in report.children:
             self._element(pdf, child)
         if self._footnotes:
@@ -230,8 +234,10 @@ class PdfRenderer:
 
     def _page_band(self, pdf, report: "Report", band, top: bool) -> None:
         """Draw a running header (top) or footer (bottom) on the current page."""
-        if band is None or (top and pdf.page_no() == 1):
-            return  # the first page has the title block instead of a header
+        if band is None or (pdf.page_no() == 1 and (top or report.cover is not None)):
+            # The first page has the title block instead of a header; a
+            # cover page has neither header nor footer.
+            return
         x, y_before = pdf.get_x(), pdf.get_y()
         pdf.set_font(self.body_family, "", 8.5)
         pdf.set_text_color(*_MUTED)
@@ -269,6 +275,59 @@ class PdfRenderer:
         pdf.set_draw_color(*_BORDER)
         pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(6)
+
+    def _cover(self, pdf, report: "Report") -> None:
+        """Draw the cover on the first page: logo and organization at the
+        top, the title a third of the way down, the note at the foot."""
+        cover = report.cover
+        assert cover is not None
+        pdf.set_y(pdf.t_margin + 10)
+        if cover.logo is not None:
+            logo = cover.logo
+            w = pdf.epw * (logo.width or 1)
+            try:
+                if logo.kind == "path":
+                    source: object = str(logo.source)
+                else:
+                    source = io.BytesIO(logo.image_data("png")[0])
+                pdf.image(source, x=pdf.l_margin + (pdf.epw - w) / 2, w=w)
+            except Exception:
+                pdf.set_font(self.body_family, "I", 10)
+                pdf.set_text_color(*_MUTED)
+                pdf.multi_cell(0, 6, self._t(f"[Logo: {logo.source if logo.kind == 'path' else 'image'}]"),
+                               align="C", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(6)
+        if cover.organization:
+            pdf.set_font(self.body_family, "B", 13)
+            pdf.set_text_color(*_MUTED)
+            pdf.multi_cell(0, 7, self._t(cover.organization), align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_y(max(pdf.get_y() + 12, pdf.h * 0.36))
+        pdf.set_text_color(*_TEXT)
+        pdf.set_font(self.body_family, "B", 30)
+        pdf.multi_cell(0, 13, self._t(report.title), align="C", new_x="LMARGIN", new_y="NEXT")
+        if report.subtitle:
+            pdf.ln(3)
+            pdf.set_font(self.body_family, "", 15)
+            pdf.set_text_color(*_MUTED)
+            pdf.multi_cell(0, 8, self._t(report.subtitle), align="C", new_x="LMARGIN", new_y="NEXT")
+        meta = [x for x in (report.author, report.date) if x]
+        if meta:
+            pdf.ln(10)
+            pdf.set_draw_color(*_ACCENT)
+            pdf.set_line_width(0.8)
+            pdf.line(pdf.w / 2 - 15, pdf.get_y(), pdf.w / 2 + 15, pdf.get_y())
+            pdf.set_line_width(0.2)
+            pdf.ln(10)
+            pdf.set_font(self.body_family, "", 12)
+            pdf.set_text_color(*_TEXT)
+            for line in meta:
+                pdf.multi_cell(0, 7, self._t(line), align="C", new_x="LMARGIN", new_y="NEXT")
+        if cover.note:
+            pdf.set_font(self.body_family, "", 9)
+            pdf.set_text_color(*_MUTED)
+            pdf.set_y(pdf.h - PAGE_MARGIN - 6)
+            pdf.cell(0, 5, self._t(cover.note), align="C")
+        pdf.set_text_color(*_TEXT)
 
     # -- elements --------------------------------------------------------
 

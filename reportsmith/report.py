@@ -6,6 +6,7 @@ import datetime as _dt
 from pathlib import Path
 from typing import Any, Optional, Sequence, Union
 
+from .cover import Cover, make_cover
 from .elements import Container
 from .page import parse_band
 
@@ -30,6 +31,11 @@ class Report(Container):
     left off the first page. The default footer is the page number;
     ``None`` removes it.
 
+    ``cover`` adds a cover page: ``True`` for one with the title, subtitle,
+    author and date, or a :class:`~reportsmith.Cover` to add a logo, an
+    organization name and a note. It replaces the title block and fills the
+    first page, which then has neither header nor footer.
+
     ``section_numbers`` numbers sections and headings ("1", "1.1", ...) in
     every format: ``True`` numbers three levels deep, an int 1-5 sets the
     depth, ``False`` (default) turns numbering off.
@@ -47,6 +53,7 @@ class Report(Container):
         header: Union[None, str, Sequence[str]] = None,
         footer: Union[None, str, Sequence[str]] = "{page}",
         section_numbers: Union[bool, int] = False,
+        cover: Union[None, bool, Cover] = False,
     ):
         super().__init__()
         self.title = title
@@ -64,6 +71,7 @@ class Report(Container):
         if not 0 <= section_numbers <= 5:
             raise ValueError(f"section_numbers must be a bool or a depth 0-5, got {section_numbers}")
         self.section_numbers = section_numbers
+        self.cover = cover  # normalized by the setter
         if date is None:
             self.date = _dt.date.today().isoformat()
         elif isinstance(date, (_dt.date, _dt.datetime)):
@@ -71,6 +79,16 @@ class Report(Container):
         else:
             self.date = str(date)
         self._level = 1  # report title is <h1>, top-level sections are <h2>
+
+    @property
+    def cover(self) -> Optional[Cover]:
+        """The report's :class:`~reportsmith.Cover`, or ``None``. May be
+        set to ``True``, ``False``/``None`` or a ``Cover``."""
+        return self._cover
+
+    @cover.setter
+    def cover(self, value: Union[None, bool, Cover]) -> None:
+        self._cover = make_cover(value)
 
     # -- export ----------------------------------------------------------
 

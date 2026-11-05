@@ -10,7 +10,7 @@ Everything documented here is importable from the top-level package:
 .. code-block:: python
 
    from reportsmith import (
-       Report, Section,
+       Report, Cover, Section,
        Heading, Paragraph, Quote, CodeBlock, ListElement, DefinitionList,
        TaskList, PageBreak, Table, Image,
        HorizontalRule, Raw, TableOfContents, Callout, Figure, Cell,
@@ -30,7 +30,7 @@ Type aliases
 Report
 ======
 
-.. py:class:: Report(title, author="", date=None, subtitle="", description="", keywords=(), language="en", header=None, footer="{page}", section_numbers=False)
+.. py:class:: Report(title, author="", date=None, subtitle="", description="", keywords=(), language="en", header=None, footer="{page}", section_numbers=False, cover=False)
 
    Top-level container.
 
@@ -57,7 +57,11 @@ Report
    :param section_numbers: ``True`` numbers sections and headings three
       levels deep ("1", "1.1", "1.1.1") in every format; an int 1–5 sets the
       depth; ``False`` (default) leaves them unnumbered.
-   :raises TypeError: if *keywords* is a single string.
+   :param cover: ``True`` for a cover page with the title, subtitle, author
+      and date, or a :class:`Cover`; ``False`` / ``None`` (default) for the
+      usual title block. Also settable later as ``report.cover``.
+   :raises TypeError: if *keywords* is a single string, or *cover* is not a
+      bool, ``None`` or :class:`Cover`.
    :raises ValueError: for an invalid header/footer template or numbering
       depth.
 
@@ -126,6 +130,22 @@ Report
       method.
 
       :raises ValueError: for any other extension.
+
+.. py:class:: Cover(logo=None, logo_width=0.3, organization="", note="")
+
+   A cover page for :class:`Report` (``Report(cover=Cover(...))``). It
+   replaces the title block and fills the first page, which has no running
+   header or footer; content starts on page 2 (PDF, LaTeX, printed HTML).
+
+   :param logo: An image at the top: a file path, image bytes (PNG, JPEG,
+      GIF or SVG), or a plot with ``savefig()``, as for :meth:`Container.figure`.
+   :param float logo_width: The logo's width as a fraction (0, 1] of the
+      text width.
+   :param str organization: A name shown under the logo.
+   :param str note: Small print at the foot of the page, e.g.
+      "Confidential".
+   :raises ValueError: if *logo_width* is outside (0, 1].
+   :raises TypeError: for an unsupported *logo* source.
 
 Container (builder API)
 =======================

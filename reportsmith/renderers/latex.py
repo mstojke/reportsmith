@@ -172,6 +172,7 @@ class LatexRenderer:
         body = "".join(self._render_element(child) for child in report.children)
         if not self.full_document:
             return body
+        title_page = self._cover(report) if report.cover is not None else "\\maketitle\n"
         options = f"[{self.class_options}]" if self.class_options else ""
         title = escape_latex(report.title)
         if report.subtitle:
@@ -201,7 +202,8 @@ class LatexRenderer:
             f"\\title{{{title}}}\n"
             f"\\author{{{escape_latex(report.author)}}}\n"
             f"\\date{{{escape_latex(report.date)}}}\n"
-            "\n\\begin{document}\n\\maketitle\n\n"
+            "\n\\begin{document}\n"
+            f"{title_page}\n"
             f"{body}"
             "\\end{document}\n"
         )
@@ -271,6 +273,46 @@ class LatexRenderer:
                 "\\end{rscallout}\n\n"
             )
         raise TypeError(f"Cannot render element of type {type(el).__name__}")
+
+    def _cover(self, report: "Report") -> str:
+        """A ``titlepage`` for the cover. It has no header or footer, and
+        the page after it is numbered 2, as in the PDF and HTML output."""
+        cover = report.cover
+        assert cover is not None
+        out = ["\\begin{titlepage}\n\\centering\n"]
+        if cover.logo is not None:
+            path = self._image_path(cover.logo, "logo")
+            out.append(f"\\includegraphics[width={cover.logo.width:g}\\linewidth]{{{path}}}\\par\n")
+        if cover.organization:
+            out.append(f"\\vspace{{1em}}{{\\large\\bfseries {escape_latex(cover.organization)}\\par}}\n")
+        out.append("\\vspace*{\\fill}\n")
+        out.append(f"{{\\Huge\\bfseries {escape_latex(report.title)}\\par}}\n")
+        if report.subtitle:
+            out.append(f"\\vspace{{1em}}{{\\Large\\color{{black!60}}{escape_latex(report.subtitle)}\\par}}\n")
+        meta = [escape_latex(x) for x in (report.author, report.date) if x]
+        if meta:
+            out.append("\\vspace{2em}{\\color{rsnote}\\rule{3cm}{1.5pt}}\\par\\vspace{2em}\n")
+            out.append("{\\large " + "\\\\[0.5em]\n".join(meta) + "\\par}\n")
+        out.append("\\vspace*{\\fill}\n")
+        if cover.note:
+            out.append(f"{{\\small\\color{{black!60}}{escape_latex(cover.note)}\\par}}\n")
+        out.append("\\end{titlepage}\n\\setcounter{page}{2}\n")
+        return "".join(out)
+
+    def _image_path(self, el: Figure, what: str = "figure") -> str:
+        """The ``\\includegraphics`` path of a figure, writing it to the
+        assets folder first when it isn't a file."""
+        if el.kind == "path":
+            return path_reference(el.source)
+        if el.format == "svg":
+            raise ValueError(f"LaTeX can't include an SVG {what}; pass PNG/JPEG data or a plot")
+        if self._assets is None:
+            raise ValueError(
+                f"A {what} from a plot or image bytes needs a file for LaTeX: use "
+                "save_latex(), or pass assets_dir to to_latex()"
+            )
+        # Plots are saved as PDF, so they stay vector graphics.
+        return self._assets.write(*el.image_data("pdf"))
 
     def _page_style(self, report: "Report") -> str:
         """fancyhdr setup for the running header and footer. The first page
@@ -422,18 +464,7 @@ class LatexRenderer:
         return f"\\begin{{tabular}}[t]{{@{{}}{align}@{{}}}}{lines}\\end{{tabular}}"
 
     def _figure(self, el: Figure) -> str:
-        if el.kind == "path":
-            path = path_reference(el.source)
-        else:
-            if el.format == "svg":
-                raise ValueError("LaTeX can't include SVG figures; pass PNG/JPEG data or a plot")
-            if self._assets is None:
-                raise ValueError(
-                    "Figures from plots or image bytes need files for LaTeX: use "
-                    "save_latex(), or pass assets_dir to to_latex()"
-                )
-            # Plots are saved as PDF, so they stay vector graphics.
-            path = self._assets.write(*el.image_data("pdf"))
+        path = self._image_path(el)
         width = f"[width={el.width:g}\\linewidth]" if el.width else ""
         out = ["\\begin{figure}[htbp]\n\\centering\n", f"\\includegraphics{width}{{{path}}}\n"]
         if el.caption:

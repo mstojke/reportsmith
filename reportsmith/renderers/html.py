@@ -120,6 +120,16 @@ figcaption { margin-top: 0.4em; }
 table.striped tbody tr:nth-child(even) { background: var(--stripe); }
 tfoot td { font-weight: 600; border-top: 2px solid var(--muted); }
 td.cell-bold { font-weight: 600; }
+.cover { display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 70vh; margin-bottom: 3rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border); }
+.cover-top { display: flex; flex-direction: column; align-items: center; gap: 1rem; width: 100%; }
+.cover-logo { max-height: 30vh; object-fit: contain; }
+.cover-org { color: var(--muted); font-size: 1.1rem; font-weight: 600; letter-spacing: 0.04em; }
+.cover-main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 3rem 0; }
+.cover h1 { font-size: 2.6rem; margin: 0; }
+.cover-subtitle { color: var(--muted); font-size: 1.3rem; margin-top: 0.6rem; }
+.cover-rule { width: 4rem; border-top: 3px solid var(--accent); margin: 1.6rem auto; }
+.cover-meta { font-size: 1.05rem; }
+.cover-note { color: var(--muted); font-size: 0.85rem; }
 """ + "".join(
     f".cell-{n} {{ color: var(--cell-{n}); }}\n.cell-bg-{n} {{ background: var(--cell-bg-{n}); }}\n"
     for n in TEXT_COLORS
@@ -136,6 +146,8 @@ _PRINT_CSS = (
   pre { white-space: pre-wrap; overflow: visible; }
   a[href^="http"]::after { content: " (" attr(href) ")"; color: var(--muted); font-size: 0.85em; word-break: break-all; }
   .page-break { break-after: page; }
+  /* The cover fills the first page (vh is the page area when printing). */
+  .cover { height: 100vh; min-height: 0; box-sizing: border-box; margin: 0; padding: 0; border: none; break-after: page; overflow: hidden; }
 }
 """
 )
@@ -195,10 +207,14 @@ def page_css(report: "Report") -> str:
     if not boxes:
         return ""
     css = "@page {\n  margin: 20mm 18mm;\n" + "".join(boxes) + "}\n"
-    if report.header is not None:
-        # The first page has the title block instead of a header.
+    # The first page has the title block instead of a header; a cover
+    # page has neither header nor footer.
+    edges = ("top", "bottom") if report.cover is not None else ("top",) if report.header is not None else ()
+    if edges:
         css += "@page :first {\n" + "".join(
-            f"  @top-{position} {{ content: none; }}\n" for position in ("left", "center", "right")
+            f"  @{edge}-{position} {{ content: none; }}\n"
+            for edge in edges
+            for position in ("left", "center", "right")
         ) + "}\n"
     return css
 
@@ -269,16 +285,7 @@ class HtmlRenderer:
         for el in iter_elements(report):
             if isinstance(el, Section) and el.label:
                 self._anchors[id(el)] = f"sec-{el.label}"
-        parts = [f"<h1>{escape(report.title)}</h1>\n"]
-        meta = []
-        if report.subtitle:
-            meta.append(f'<div class="subtitle">{escape(report.subtitle)}</div>')
-        if report.author:
-            meta.append(f"<div><strong>Author:</strong> {escape(report.author)}</div>")
-        if report.date:
-            meta.append(f"<div><strong>Date:</strong> {escape(report.date)}</div>")
-        if meta:
-            parts.append('<div class="report-meta">\n' + "\n".join(meta) + "\n</div>\n")
+        parts = [self._cover(report) if report.cover is not None else self._title_block(report)]
         self._footnotes: list[str] = []
         for child in report.children:
             parts.append(self._render_element(child))
@@ -291,6 +298,51 @@ class HtmlRenderer:
                 )
             parts.append("</ol>\n</section>\n")
         return "".join(parts)
+
+    @staticmethod
+    def _title_block(report: "Report") -> str:
+        out = f"<h1>{escape(report.title)}</h1>\n"
+        meta = []
+        if report.subtitle:
+            meta.append(f'<div class="subtitle">{escape(report.subtitle)}</div>')
+        if report.author:
+            meta.append(f"<div><strong>Author:</strong> {escape(report.author)}</div>")
+        if report.date:
+            meta.append(f"<div><strong>Date:</strong> {escape(report.date)}</div>")
+        if meta:
+            out += '<div class="report-meta">\n' + "\n".join(meta) + "\n</div>\n"
+        return out
+
+    @staticmethod
+    def _cover(report: "Report") -> str:
+        cover = report.cover
+        assert cover is not None
+        out = ['<header class="cover">\n<div class="cover-top">\n']
+        logo = cover.logo
+        if logo is not None:
+            if logo.kind == "path":
+                src = path_reference(logo.source)
+            else:
+                src = data_uri(*logo.image_data("png"))
+            out.append(
+                f'<img class="cover-logo" src="{escape(src, quote=True)}" '
+                f'alt="{escape(logo.alt, quote=True)}" style="width:{(logo.width or 1) * 100:g}%">\n'
+            )
+        if cover.organization:
+            out.append(f'<div class="cover-org">{escape(cover.organization)}</div>\n')
+        out.append('</div>\n<div class="cover-main">\n')
+        out.append(f"<h1>{escape(report.title)}</h1>\n")
+        if report.subtitle:
+            out.append(f'<div class="cover-subtitle">{escape(report.subtitle)}</div>\n')
+        meta = [escape(x) for x in (report.author, report.date) if x]
+        if meta:
+            out.append('<div class="cover-rule"></div>\n')
+            out.append('<div class="cover-meta">' + "<br>\n".join(meta) + "</div>\n")
+        out.append("</div>\n")
+        if cover.note:
+            out.append(f'<div class="cover-note">{escape(cover.note)}</div>\n')
+        out.append("</header>\n")
+        return "".join(out)
 
     # -- elements --------------------------------------------------------
 

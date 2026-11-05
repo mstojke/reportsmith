@@ -19,6 +19,7 @@ A small, dependency-free Python library for building reports programmatically an
 - Figures from image files, image bytes, or matplotlib plots, with numbered captions ("Figure 1", "Table 2") and `ref()` cross-references
 - Optional section numbering ("1", "1.1") in every format, with `ref()` to sections
 - Running page headers and footers with page numbers ("Page 3 of 12") in PDF, LaTeX, and printed HTML
+- Cover pages with an optional logo, organization name, and confidentiality note (`Report(cover=Cover(...))`)
 - Callouts (note, tip, important, warning, caution): GitHub alerts in Markdown, coloured boxes in HTML, LaTeX and PDF
 - Correct escaping everywhere: HTML entities, Markdown table pipes, code fences that widen when the source contains ` ``` `
 - HTML export ships with a clean embedded stylesheet — automatic, light, or dark theme, plus a print stylesheet — that you can extend or replace with your own CSS
@@ -84,6 +85,7 @@ The **[examples site](https://mstojke.github.io/reportsmith/)** shows every exam
 | [Callouts and inline styles](https://mstojke.github.io/reportsmith/#callouts-and-inline-styles) | Notes and warnings, footnotes, strikethrough, sub/superscript |
 | [Lists and page breaks](https://mstojke.github.io/reportsmith/#lists-and-page-breaks) | Definition and task lists, page breaks, `save()` |
 | [Headers, footers and section numbering](https://mstojke.github.io/reportsmith/#headers-footers-and-section-numbering) | Page numbers, running headers, numbered sections |
+| [Cover page](https://mstojke.github.io/reportsmith/#cover-page) | A title page with a logo, organization and note |
 | [Merging, metadata and highlighting](https://mstojke.github.io/reportsmith/#merging-metadata-and-highlighting) | Combining reports, themes, syntax highlighting |
 
 The sources are in [`examples/`](https://github.com/mstojke/reportsmith/tree/main/examples). The site is rebuilt from `main` on every push by the [Examples site workflow](https://github.com/mstojke/reportsmith/actions/workflows/pages.yml).
@@ -107,9 +109,9 @@ Then open `docs/_build/html/index.html`.
 
 ## API overview
 
-### `Report(title, author="", date=None, subtitle="")`
+### `Report(title, author="", date=None, subtitle="", ..., cover=False)`
 
-`date` accepts a string, `datetime.date`, or `datetime.datetime`; it defaults to today.
+`date` accepts a string, `datetime.date`, or `datetime.datetime`; it defaults to today. `cover=True` (or `cover=Cover(logo=..., organization=..., note=...)`) puts the title on a cover page of its own.
 
 Builder methods (all chainable, also available on sections):
 

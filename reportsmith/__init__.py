@@ -37,6 +37,7 @@ from .elements import (
     Table,
     TableOfContents,
 )
+from .cover import Cover
 from .report import Report
 from .renderers.markdown import MarkdownRenderer
 from .renderers.html import HtmlRenderer
@@ -47,6 +48,7 @@ __version__ = "0.7.1"
 
 __all__ = [
     "Report",
+    "Cover",
     "Section",
     "Heading",
     "Paragraph",

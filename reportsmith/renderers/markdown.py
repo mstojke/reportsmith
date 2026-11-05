@@ -62,10 +62,13 @@ class MarkdownRenderer:
         self._anchors = heading_anchors(report, self._numbering)
         self._footnotes: list[str] = []
         blocks: list[str] = [self._front_matter(report)] if self.front_matter else []
-        blocks.append(f"# {report.title}")
-        meta = self._metadata_lines(report)
-        if meta:
-            blocks.append("\n".join(meta))
+        if report.cover is not None:
+            blocks.extend(self._cover(report))
+        else:
+            blocks.append(f"# {report.title}")
+            meta = self._metadata_lines(report)
+            if meta:
+                blocks.append("\n".join(meta))
         for child in report.children:
             blocks.extend(self._render_element(child))
         if self._footnotes:
@@ -90,6 +93,25 @@ class MarkdownRenderer:
         ]
         lines = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in fields if value]
         return "---\n" + "\n".join(lines) + "\n---"
+
+    def _cover(self, report: "Report") -> list[str]:
+        # Markdown has no pages: the cover is a title area, then a page
+        # break for renderers that keep HTML styles (as with page_break()).
+        cover = report.cover
+        assert cover is not None
+        blocks = []
+        if cover.logo is not None:
+            blocks.append(self._figure(cover.logo))
+        if cover.organization:
+            blocks.append(f"**{cover.organization}**")
+        blocks.append(f"# {report.title}")
+        meta = self._metadata_lines(report)
+        if meta:
+            blocks.append("\n".join(meta))
+        if cover.note:
+            blocks.append(f"*{cover.note}*")
+        blocks.append('<div style="break-after: page"></div>')
+        return blocks
 
     def _metadata_lines(self, report: "Report") -> list[str]:
         lines = []

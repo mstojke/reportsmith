@@ -6,7 +6,7 @@ This guide walks through every feature. For a terse signature-level listing, see
 
 ## Contents
 
-1. [Creating a report](#creating-a-report) — including [metadata](#metadata)
+1. [Creating a report](#creating-a-report) — including [metadata](#metadata) and [cover pages](#cover-page)
 2. [Sections](#sections) — including [section numbering](#section-numbering) and [reusing and merging content](#reusing-and-merging-content)
 3. [Text and inline formatting](#text-and-inline-formatting) — including [footnotes](#footnotes)
 4. [Tables](#tables) — including [table styling](#table-styling) and [tables from data](#tables-from-data)
@@ -69,6 +69,32 @@ report = Report(
 | Markdown | Only with `to_markdown(front_matter=True)` / `save_markdown(..., front_matter=True)`: a YAML block at the top (`title`, `subtitle`, `author`, `date`, `description`, `keywords`, `lang`) for static-site generators such as Jekyll, Hugo, or MkDocs. |
 
 `keywords` must be a list (or other sequence) of strings; a single string raises `TypeError`.
+
+### Cover page
+
+`cover=True` replaces the title block with a cover page: the title, subtitle, author and date centred on a page of their own. Pass a `Cover` to add a logo, an organization name, and a note at the foot of the page:
+
+```python
+from reportsmith import Cover, Report
+
+report = Report(
+    "Market Entry Assessment",
+    subtitle="Expanding into the Nordics",
+    author="Strategy Office",
+    cover=Cover(
+        logo="logo.png",                  # path, image bytes, or a matplotlib figure
+        logo_width=0.4,                   # fraction of the text width; default 0.3
+        organization="Northwind Logistics",
+        note="Confidential",
+    ),
+)
+```
+
+- **PDF and LaTeX:** the cover is page 1, with no running header or footer; the content starts on page 2. Page numbers count the cover, so the first content page shows "2" and `{pages}` is the total including the cover. LaTeX uses a `titlepage` environment instead of `\maketitle`.
+- **HTML:** a centred title area at the top of the page; when printed, it fills the first page and the `@page` header and footer are left off it.
+- **Markdown:** the logo, organization, title block and note, followed by a page-break `<div>` (as with `page_break()`).
+
+The logo accepts the same sources as [figures](#figures): an SVG logo works in HTML, Markdown and PDF but not LaTeX, and a logo from bytes or a plot needs `save_latex()` (or `assets_dir=`) for LaTeX. `report.cover` can also be set after the report is created (`report.cover = True`). Only the report itself has a cover: `extend()` copies content, not covers.
 
 ## Sections
 
@@ -520,7 +546,7 @@ report = Report(
 Each is a string (centred) or a `(left, centre, right)` tuple. Placeholders: `{page}`, `{pages}` (the total), `{title}`, `{subtitle}`, `{author}` and `{date}`; write `{{` / `}}` for literal braces. An unknown placeholder raises `ValueError` when the report is created.
 
 - **Defaults:** no header, and a centred page number as the footer — `footer="{page}"`. Pass `footer=None` for no page numbers.
-- **The first page** shows the footer but not the header, since the title block is there.
+- **The first page** shows the footer but not the header, since the title block is there. With a [cover page](#cover-page), the first page has neither, and the header starts on page 2.
 - **PDF:** drawn in small muted text in the page margins.
 - **LaTeX:** set up with `fancyhdr`, and `lastpage` for `{pages}`. The first page uses the `plain` style (footer only).
 - **HTML:** `@page` margin boxes in the stylesheet, used when the page is printed or saved as PDF from the browser. Chromium-based browsers (Chrome, Edge) and paged-media tools such as WeasyPrint, Paged.js and Prince support them; Firefox and Safari currently print without them. `reportsmith.renderers.html.page_css(report)` returns just these rules.

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Cover pages: `Report(cover=True)` puts the title, subtitle, author and
+  date on a page of their own, and `Report(cover=Cover(logo=...,
+  logo_width=..., organization=..., note=...))` adds a logo (path, image
+  bytes or plot), an organization name and a note at the foot of the
+  page. In PDF and LaTeX (a `titlepage`) the cover is page 1 with no
+  header or footer, and the content starts on page 2; in HTML it is a
+  centred title area that fills the first printed page; in Markdown, the
+  title block with the logo, organization and note.
+- `examples/cover_example.py`, on the examples site and compiled by the CI
+  LaTeX job.
+
 ## [0.7.1] - 2026-11-04
 
 ### Added
