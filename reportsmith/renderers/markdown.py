@@ -17,6 +17,7 @@ from ..elements import (
     Image,
     ListElement,
     DefinitionList,
+    Equation,
     TaskList,
     PageBreak,
     Paragraph,
@@ -138,6 +139,11 @@ class MarkdownRenderer:
         if isinstance(el, Quote):
             text = self._inline(el.parts)
             return ["\n".join(f"> {line}" for line in text.splitlines() or [""])]
+        if isinstance(el, Equation):
+            # GitHub (and MathJax/KaTeX-based renderers) typeset $$...$$.
+            number = self._numbering.equation_number(el)
+            tag = f" \\tag{{{number}}}" if number else ""
+            return [f"$$\n{el.tex}{tag}\n$$"]
         if isinstance(el, CodeBlock):
             fence = "```"
             # Widen the fence if the source itself contains backtick fences.
@@ -286,6 +292,8 @@ class MarkdownRenderer:
             return f"*{span.text}*"
         if span.style == "code":
             return f"`{span.text}`"
+        if span.style == "math":
+            return f"${span.text}$"
         if span.style == "link":
             return f"[{span.text}]({span.href})"
         if span.style == "strike":

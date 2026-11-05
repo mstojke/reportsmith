@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from html import escape
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Union
 
 from ..elements import (
     Callout,
@@ -16,6 +16,7 @@ from ..elements import (
     Image,
     ListElement,
     DefinitionList,
+    Equation,
     TaskList,
     PageBreak,
     Paragraph,
@@ -120,6 +121,7 @@ figcaption { margin-top: 0.4em; }
 table.striped tbody tr:nth-child(even) { background: var(--stripe); }
 tfoot td { font-weight: 600; border-top: 2px solid var(--muted); }
 td.cell-bold { font-weight: 600; }
+.equation { margin: 1em 0; overflow-x: auto; text-align: center; }
 .cover { display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 70vh; margin-bottom: 3rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border); }
 .cover-top { display: flex; flex-direction: column; align-items: center; gap: 1rem; width: 100%; }
 .cover-logo { max-height: 30vh; object-fit: contain; }
@@ -219,6 +221,55 @@ def page_css(report: "Report") -> str:
     return css
 
 
+#: MathJax build loaded by HTML documents that contain math.
+MATHJAX_URL = "https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-chtml.js"
+
+
+def mathjax_tags(url: str = MATHJAX_URL) -> str:
+    """``<script>`` tags that typeset the report's math with MathJax.
+
+    Only ``\\(...\\)`` and ``\\[...\\]`` are read as math (not ``$``), so
+    dollar signs in ordinary text are left alone.
+    """
+    config = (
+        "window.MathJax = {tex: {inlineMath: [['\\\\(', '\\\\)']], "
+        "displayMath: [['\\\\[', '\\\\]']]}};"
+    )
+    return f"<script>{config}</script>\n<script defer src=\"{escape(url, quote=True)}\"></script>\n"
+
+
+def has_math(report: "Report") -> bool:
+    """Whether the report contains any equation or inline math."""
+    for el in iter_elements(report):
+        if isinstance(el, Equation):
+            return True
+        for parts in _inline_lists(el):
+            if any(isinstance(p, Inline) and p.style == "math" for p in parts):
+                return True
+    return False
+
+
+def _inline_lists(el: Element) -> list[list[InlineContent]]:
+    """The inline-content lists inside one element (not its children)."""
+    if isinstance(el, (Paragraph, Quote, Heading)):
+        return [el.parts]
+    if isinstance(el, Section):
+        return [el.title_parts]
+    if isinstance(el, ListElement):
+        out: list[list[InlineContent]] = []
+        for item in el.items:
+            out.extend(_inline_lists(item) if isinstance(item, ListElement) else [item])
+        return out
+    if isinstance(el, Table):
+        rows = [el.headers, *el.rows] + ([el.footer] if el.footer is not None else [])
+        return [cell for row in rows for cell in row]
+    if isinstance(el, DefinitionList):
+        return [part for pair in el.items for part in pair]
+    if isinstance(el, TaskList):
+        return [text for _, text in el.items]
+    return []
+
+
 #: The default stylesheet (automatic light/dark theme).
 DEFAULT_CSS = theme_css("auto")
 
@@ -236,8 +287,10 @@ class HtmlRenderer:
         css: Optional[str] = None,
         theme: str = "auto",
         highlight: bool = False,
+        mathjax: Union[bool, str] = True,
     ):
         self.full_document = full_document
+        self.mathjax = mathjax
         self.css = theme_css(theme) if css is None else css
         self.highlight = highlight
         if highlight:
@@ -270,6 +323,7 @@ class HtmlRenderer:
             f"{meta_tags}"
             f"<title>{escape(report.title)}</title>\n"
             f"<style>\n{self.css}{page_css(report)}</style>\n"
+            f"{self._math_scripts(report)}"
             "</head>\n<body>\n"
             f"{body}"
             "</body>\n</html>\n"
@@ -298,6 +352,11 @@ class HtmlRenderer:
                 )
             parts.append("</ol>\n</section>\n")
         return "".join(parts)
+
+    def _math_scripts(self, report: "Report") -> str:
+        if not self.mathjax or not has_math(report):
+            return ""
+        return mathjax_tags(MATHJAX_URL if self.mathjax is True else str(self.mathjax))
 
     @staticmethod
     def _title_block(report: "Report") -> str:
@@ -358,6 +417,11 @@ class HtmlRenderer:
             return f"<p>{self._inline(el.parts)}</p>\n"
         if isinstance(el, Quote):
             return f"<blockquote><p>{self._inline(el.parts)}</p></blockquote>\n"
+        if isinstance(el, Equation):
+            number = self._numbering.equation_number(el)
+            tag = f" \\tag{{{number}}}" if number else ""
+            target = f' id="eq-{escape(el.label, quote=True)}"' if el.label else ""
+            return f'<div class="equation"{target}>\\[{escape(el.tex)}{tag}\\]</div>\n'
         if isinstance(el, CodeBlock):
             cls = f' class="language-{escape(el.language, quote=True)}"' if el.language else ""
             spans = html_spans(el.source, el.language) if self.highlight else None
@@ -553,6 +617,8 @@ class HtmlRenderer:
             return f"<em>{text}</em>"
         if span.style == "code":
             return f"<code>{text}</code>"
+        if span.style == "math":
+            return f'<span class="math">\\({text}\\)</span>'
         if span.style == "link":
             return f'<a href="{escape(span.href, quote=True)}">{text}</a>'
         if span.style == "strike":

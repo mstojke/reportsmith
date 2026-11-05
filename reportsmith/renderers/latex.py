@@ -16,6 +16,7 @@ from ..elements import (
     Image,
     ListElement,
     DefinitionList,
+    Equation,
     TaskList,
     PageBreak,
     Paragraph,
@@ -27,6 +28,7 @@ from ..elements import (
 )
 from ..assets import Assets, path_reference
 from ..colors import to_hex
+from ..equations import tex_to_ascii
 from ..highlight import latex_block, latex_style_defs, require_pygments
 from ..inline import Inline, InlineContent
 from ..numbering import LATEX_PREFIXES, KIND_NAMES, Numbering
@@ -52,6 +54,7 @@ DEFAULT_PREAMBLE = r"""\usepackage{iftex}
 \usepackage{array}
 \usepackage{colortbl}
 \usepackage{caption}
+\usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{fancyvrb}
 \usepackage{xcolor}
@@ -222,6 +225,10 @@ class LatexRenderer:
             return f"{self._inline(el.parts)}\n\n"
         if isinstance(el, Quote):
             return f"\\begin{{quote}}\n{self._inline(el.parts)}\n\\end{{quote}}\n\n"
+        if isinstance(el, Equation):
+            if el.label:
+                return f"\\begin{{equation}}\\label{{eq:{el.label}}}\n{el.tex}\n\\end{{equation}}\n\n"
+            return f"\\[\n{el.tex}\n\\]\n\n"
         if isinstance(el, CodeBlock):
             return self._code(el)
         if isinstance(el, ListElement):
@@ -504,6 +511,11 @@ class LatexRenderer:
             return f"\\emph{{{text}}}"
         if span.style == "code":
             return f"\\texttt{{{text}}}"
+        if span.style == "math":
+            # PDF bookmarks (from headings) can't hold math: they get the
+            # source with its markup removed.
+            bookmark = escape_latex(tex_to_ascii(span.text))
+            return f"\\texorpdfstring{{\\({span.text}\\)}}{{{bookmark}}}"
         if span.style == "link":
             return f"\\href{{{_escape_url(span.href)}}}{{{text}}}"
         if span.style == "strike":

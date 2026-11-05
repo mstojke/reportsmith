@@ -13,14 +13,15 @@ This guide walks through every feature. For a terse signature-level listing, see
 5. [Lists](#lists) — including [definition and task lists](#definition-lists-and-task-lists)
 6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules) — including [syntax highlighting](#syntax-highlighting)
 7. [Figures](#figures) — including [numbering and cross-references](#numbering-and-cross-references)
-8. [Callouts](#callouts)
-9. [Table of contents](#table-of-contents)
-10. [Raw passthrough content](#raw-passthrough-content)
-11. [Exporting](#exporting) — including [page headers, footers and numbers](#page-headers-footers-and-numbers)
-12. [Exporting to LaTeX](#exporting-to-latex)
-13. [Exporting to PDF](#exporting-to-pdf)
-14. [Customizing the HTML output](#customizing-the-html-output)
-15. [Escaping and safety](#escaping-and-safety)
+8. [Math](#math)
+9. [Callouts](#callouts)
+10. [Table of contents](#table-of-contents)
+11. [Raw passthrough content](#raw-passthrough-content)
+12. [Exporting](#exporting) — including [page headers, footers and numbers](#page-headers-footers-and-numbers)
+13. [Exporting to LaTeX](#exporting-to-latex)
+14. [Exporting to PDF](#exporting-to-pdf)
+15. [Customizing the HTML output](#customizing-the-html-output)
+16. [Escaping and safety](#escaping-and-safety)
 
 ---
 
@@ -452,6 +453,33 @@ s.table(headers, rows, caption="Revenue by region", label="revenue")
 
 In LaTeX, numbers come from LaTeX itself (`\caption`, `\label`, `\ref`), and plain `image()` captions are unnumbered (`\caption*`), so they match the other formats.
 
+## Math
+
+Write math in TeX: `math()` for inline math anywhere text is accepted, and `equation()` for a display equation. Use raw strings (`r"..."`) so backslashes stay as written.
+
+```python
+from reportsmith import math, ref
+
+s.paragraph(["Utilization is ", ref("utilization"), ", and the queue is stable while ", math(r"\rho < 1"), "."])
+s.equation(r"\rho = \frac{\lambda}{c\,\mu}", label="utilization")   # numbered (1)
+s.equation(r"\sigma = \sqrt{\frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2}")  # no label: unnumbered
+s.table(["Quantity", "Symbol"], [["Arrival rate", [math(r"\lambda")]]])
+```
+
+A **labelled** equation is numbered "(1)", "(2)", ... in document order, and `ref()` refers to it as "Equation 1"; unlabelled equations aren't numbered. Labels share one namespace with sections, figures and tables.
+
+| Format | Inline `math()` | `equation()` |
+| --- | --- | --- |
+| LaTeX | `\(...\)` (loads `amsmath`) | `\[...\]`, or an `equation` environment with `\label` when labelled |
+| Markdown | `$...$` | `$$...$$`, with `\tag{n}` when numbered — GitHub, and MathJax/KaTeX-based sites, typeset both |
+| HTML | `\(...\)` | `\[...\]` with `\tag{n}`; typeset by [MathJax](https://www.mathjax.org/) |
+| PDF | Unicode text: `math(r"\alpha^2 \le \pi")` reads "α² ≤ π" | Typeset with matplotlib's mathtext when matplotlib is installed; otherwise centred Unicode text |
+
+- **HTML:** a full document that contains math loads MathJax 3 from the jsDelivr CDN (`reportsmith.renderers.html.MATHJAX_URL`), so math needs a network connection to display; offline, the TeX source shows instead. `to_html(mathjax="/static/mathjax/tex-chtml.js")` loads another (e.g. self-hosted) MathJax build, and `mathjax=False` leaves the script out — as does `full_document=False`, where the page you embed the report in must load MathJax. Only `\(...\)` and `\[...\]` are read as math, so dollar signs in ordinary text are left alone.
+- **PDF:** mathtext covers most single-line TeX math — fractions, roots, sums and integrals with limits, Greek letters, accents — but not environments such as `aligned`, `cases` or matrices; those, and everything without matplotlib, fall back to a Unicode approximation. Inline math is always Unicode text; with the PDF core fonts (no Unicode font found or `fonts=()`), symbols outside Latin-1 are spelled out ("alpha <= pi").
+- **Bookmarks and tables of contents** show math in a heading as Unicode text (PDF, HTML, Markdown) or as the source without its markup (LaTeX's PDF bookmarks).
+- The TeX is passed through as written, unescaped, to LaTeX, Markdown and MathJax — so it must be valid TeX.
+
 ## Callouts
 
 `callout(kind, content=None, title="")` adds a highlighted box for notes, tips and warnings. There are five kinds, matching GitHub's alerts: `"note"`, `"tip"`, `"important"`, `"warning"` and `"caution"`.
@@ -591,7 +619,7 @@ Options (on `to_latex()`, `save_latex()`, and `LatexRenderer`):
 
 - `full_document=False` returns only the body (sections onward — no preamble, title block, or `\begin{document}`), ready to `\input` into your own document. Your document then needs the packages listed in `reportsmith.renderers.latex.DEFAULT_PREAMBLE`, and the `rscallout` environment and `rs*` colours defined there if the report contains callouts.
 - `document_class="report"` / `class_options="12pt,letterpaper"` change the `\documentclass` line.
-- `preamble="..."` is appended after the built-in preamble, e.g. `preamble="\\usepackage{amsmath}"` or `\\renewcommand` tweaks.
+- `preamble="..."` is appended after the built-in preamble, e.g. `preamble="\\usepackage{siunitx}"` or `\\renewcommand` tweaks.
 - `numbered=True` numbers sections (three levels, LaTeX's default); by default they are unnumbered (but still bookmarked). `Report(section_numbers=...)` does the same in every format and takes precedence.
 - `assets_dir=...` (on `to_latex()` and `LatexRenderer`): where to write figures made from plots or image bytes. `save_latex()` uses a `<name>_files/` folder automatically.
 

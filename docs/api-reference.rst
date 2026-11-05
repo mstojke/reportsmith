@@ -13,8 +13,8 @@ Everything documented here is importable from the top-level package:
        Report, Cover, Section,
        Heading, Paragraph, Quote, CodeBlock, ListElement, DefinitionList,
        TaskList, PageBreak, Table, Image,
-       HorizontalRule, Raw, TableOfContents, Callout, Figure, Cell,
-       Inline, bold, italic, code, link, strike, sub, sup, footnote, ref,
+       HorizontalRule, Raw, TableOfContents, Callout, Figure, Cell, Equation,
+       Inline, bold, italic, code, link, strike, sub, sup, math, footnote, ref,
        MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer,
    )
 
@@ -75,7 +75,7 @@ Report
       *assets_dir* when given. ``front_matter=True`` starts the document
       with a YAML block of the report's metadata.
 
-   .. py:method:: to_html(full_document=True, css=None, theme="auto", highlight=False) -> str
+   .. py:method:: to_html(full_document=True, css=None, theme="auto", highlight=False, mathjax=True) -> str
 
       Render the report as HTML: a full standalone page with embedded CSS,
       or just the body markup when ``full_document=False``. ``css`` replaces
@@ -83,6 +83,10 @@ Report
       ``"dark"``) chooses its colours.
       ``highlight=True`` colours code blocks with Pygments (``pip install
       reportsmith[highlight]``); see :ref:`highlighting`.
+      A full document containing math loads MathJax
+      (``reportsmith.renderers.html.MATHJAX_URL``) to typeset it;
+      ``mathjax`` may be the URL of another MathJax build, or ``False`` to
+      leave the script out. :meth:`save_html` takes the same options.
 
    .. py:method:: save_markdown(path, front_matter=False) -> pathlib.Path
 
@@ -184,6 +188,12 @@ Container (builder API)
    .. py:method:: code(source, language="") -> Container
 
       Add a :class:`CodeBlock`.
+
+   .. py:method:: equation(tex, label="") -> Container
+
+      Add a display :class:`Equation` written in TeX (no ``$``
+      delimiters). A *label* numbers it "(1)", "(2)", ... and makes it
+      referable with :func:`ref` ("Equation 1").
 
    .. py:method:: bullet_list(items) -> Container
 
@@ -403,6 +413,17 @@ render-agnostic.
 
       :raises TypeError: if *df* is not DataFrame-like.
 
+.. py:class:: Equation(tex, label="")
+
+   A display equation written in TeX. Labelled equations are numbered in
+   document order; unlabelled ones are not. LaTeX: ``\[...\]``, or an
+   ``equation`` environment with ``\label``. Markdown: ``$$...$$`` (with
+   ``\tag{n}``). HTML: ``<div class="equation">\[...\]</div>`` typeset
+   by MathJax. PDF: typeset with matplotlib's mathtext when installed and
+   able to parse it, else approximated in Unicode text.
+
+   :raises ValueError: for empty *tex* or an invalid *label*.
+
 .. py:class:: Figure(source, caption="", alt="", label="", width=None, dpi=200)
 
    An image with an optional numbered caption ("Figure 1: ...").
@@ -555,10 +576,18 @@ Inline spans
    Subscript / superscript. Markdown and HTML ``<sub>`` / ``<sup>``;
    LaTeX ``\textsubscript`` / ``\textsuperscript``.
 
+.. py:function:: math(tex) -> Inline
+
+   Inline math written in TeX, e.g. ``math(r"E = mc^2")``. LaTeX
+   ``\(...\)``; Markdown ``$...$``; HTML ``\(...\)`` typeset by
+   MathJax; PDF and plain-text uses (bookmarks, TOC entries) a Unicode
+   approximation ("E = mc²"). Raises ``ValueError`` for empty *tex*.
+
 .. py:function:: ref(label, text="") -> Inline
 
-   A cross-reference to the section, or captioned figure or table, with
-   this *label*: "Section 2.1" / "Figure 2" / "Table 1", or *text* if given.
+   A cross-reference to the section, equation, or captioned figure or
+   table, with this *label*: "Section 2.1" / "Equation 1" / "Figure 2" /
+   "Table 1", or *text* if given.
    An unnumbered section is referred to by its title. A link in HTML, LaTeX
    (``\hyperref`` + ``\ref*``) and PDF; plain text in Markdown and in PDF
    table cells. Raises ``ValueError`` at render time for an unknown label.

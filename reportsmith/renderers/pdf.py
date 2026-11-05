@@ -30,6 +30,7 @@ from ..elements import (
     Image,
     ListElement,
     DefinitionList,
+    Equation,
     TaskList,
     PageBreak,
     Paragraph,
@@ -40,6 +41,7 @@ from ..elements import (
     TableOfContents,
 )
 from ..colors import to_rgb
+from ..equations import SCRIPT_FALLBACK, render_equation, tex_to_unicode, to_latin1
 from ..highlight import pdf_tokens, require_pygments
 from ..inline import Inline, InlineContent
 from ..numbering import Numbering
@@ -354,6 +356,8 @@ class PdfRenderer:
             pdf.ln(1.5)
         elif isinstance(el, Quote):
             self._quote(pdf, el)
+        elif isinstance(el, Equation):
+            self._equation(pdf, el)
         elif isinstance(el, CodeBlock) and self.highlight and (runs := pdf_tokens(el.source, el.language)):
             self._highlighted_code(pdf, runs)
         elif isinstance(el, CodeBlock):
@@ -619,6 +623,59 @@ class PdfRenderer:
                 self._write_parts(pdf, item, BODY_SIZE)
                 pdf.ln(BODY_SIZE * 0.55)
 
+    def _equation(self, pdf, el: Equation) -> None:
+        """A display equation: typeset by matplotlib's mathtext when it can
+        be, else approximated in Unicode text; centred, with "(n)" at the
+        right margin when numbered."""
+        number = self._numbering.equation_number(el)
+        tag_w = 14 if number else 0
+        rendered = render_equation(el.tex, size=BODY_SIZE * 1.15)
+        pdf.ln(1.5)
+        if rendered is not None:
+            data, width_pt, height_pt = rendered
+            w, h = width_pt * 25.4 / 72, height_pt * 25.4 / 72
+            room = pdf.epw - 2 * tag_w
+            if w > room:  # too wide: scale down to fit
+                w, h = room, h * room / w
+            if pdf.get_y() + h > pdf.page_break_trigger:
+                pdf.add_page()
+            self._mark_equation(pdf, el)
+            top = pdf.get_y()
+            pdf.image(io.BytesIO(data), x=pdf.l_margin + (pdf.epw - w) / 2, y=top, w=w, h=h)
+        else:
+            text = self._math_text(pdf, el.tex, BODY_SIZE + 1)
+            pdf.set_text_color(*_TEXT)
+            h = 7
+            if pdf.get_y() + h > pdf.page_break_trigger:
+                pdf.add_page()
+            self._mark_equation(pdf, el)
+            top = pdf.get_y()
+            pdf.set_xy(pdf.l_margin + tag_w, top)
+            pdf.cell(pdf.epw - 2 * tag_w, h, text, align="C")
+        if number:
+            pdf.set_font(self.body_family, "", BODY_SIZE)
+            pdf.set_text_color(*_TEXT)
+            pdf.set_xy(pdf.l_margin, top + h / 2 - 3)
+            pdf.cell(pdf.epw, 6, f"({number})", align="R")
+        pdf.set_xy(pdf.l_margin, top + h)
+        pdf.ln(3)
+
+    def _mark_equation(self, pdf, el: Equation) -> None:
+        if el.label:
+            pdf.set_link(self._ref_link(pdf, el.label), y=pdf.get_y(), page=pdf.page_no())
+
+    def _math_text(self, pdf, tex: str, size: Optional[float] = None, style: str = "") -> str:
+        """Math as Unicode text; super/subscript characters the current font
+        lacks are spelled out ("x^2"). With ``size``, the body font is set
+        first."""
+        if size is not None:
+            pdf.set_font(self.body_family, style, size)
+        text = tex_to_unicode(tex)
+        if not self.unicode:
+            return to_latin1(text)  # core fonts
+        missing = {c for c in text if c in SCRIPT_FALLBACK and not self._has_glyphs(pdf, c)}
+        return "".join(SCRIPT_FALLBACK[c] if c in missing else c for c in text)
+
     def _ref_link(self, pdf, label: str) -> int:
         # Created on first use, so references may come before their target.
         if label not in self._ref_links:
@@ -761,6 +818,8 @@ class PdfRenderer:
                 elif part.style == "code":
                     pdf.set_font(self.mono_family, base_style, size * 0.92)
                     pdf.write(h, text)
+                elif part.style == "math":
+                    pdf.write(h, self._math_text(pdf, part.text, size, base_style))
                 elif part.style == "link":
                     pdf.set_font(self.body_family, self._merge(base_style, "U"), size)
                     pdf.set_text_color(*_ACCENT)
@@ -834,6 +893,8 @@ class PdfRenderer:
                 out.append(mapped if self._has_glyphs(pdf, mapped) else p.text)
             elif p.style == "ref":
                 out.append(self._md_escape(self._numbering.ref_text(p.href, p.text)))
+            elif p.style == "math":
+                out.append(self._md_escape(self._math_text(pdf, p.text)))
             else:
                 out.append(self._md_escape(p.text))
         return "".join(out)

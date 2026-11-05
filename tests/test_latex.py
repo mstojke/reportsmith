@@ -60,12 +60,12 @@ class TestDocument:
 
     def test_class_and_preamble_options(self):
         tex = Report("T").to_latex(
-            document_class="report", class_options="", preamble="\\usepackage{amsmath}"
+            document_class="report", class_options="", preamble="\\usepackage{siunitx}"
         )
         assert tex.startswith("\\documentclass{report}\n")
         assert (
             tex.index("\\usepackage{hyperref}")
-            < tex.index("\\usepackage{amsmath}")
+            < tex.index("\\usepackage{siunitx}")
             < tex.index("\\begin{document}")
         )
 

@@ -112,6 +112,7 @@ class Report(Container):
         css: Optional[str] = None,
         theme: str = "auto",
         highlight: bool = False,
+        mathjax: Union[bool, str] = True,
     ) -> str:
         """Render the report as HTML.
 
@@ -120,12 +121,14 @@ class Report(Container):
         to replace the built-in stylesheet, or ``theme`` (``"auto"``,
         ``"light"`` or ``"dark"``) to choose its colours. ``highlight=True``
         colours code blocks with Pygments (``pip install
-        reportsmith[highlight]``).
+        reportsmith[highlight]``). A full document with math loads MathJax
+        from a CDN to typeset it: ``mathjax`` may be a URL of another
+        MathJax build (e.g. self-hosted), or ``False`` to leave it out.
         """
         from .renderers.html import HtmlRenderer
 
         return HtmlRenderer(
-            full_document=full_document, css=css, theme=theme, highlight=highlight
+            full_document=full_document, css=css, theme=theme, highlight=highlight, mathjax=mathjax
         ).render(self)
 
     def to_pdf(
@@ -200,10 +203,13 @@ class Report(Container):
         css: Optional[str] = None,
         theme: str = "auto",
         highlight: bool = False,
+        mathjax: Union[bool, str] = True,
     ) -> Path:
         """Write the HTML export to ``path`` and return it."""
         path = Path(path)
-        html = self.to_html(full_document=full_document, css=css, theme=theme, highlight=highlight)
+        html = self.to_html(
+            full_document=full_document, css=css, theme=theme, highlight=highlight, mathjax=mathjax
+        )
         path.write_text(html, encoding="utf-8")
         return path
 

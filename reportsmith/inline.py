@@ -1,5 +1,5 @@
 """Inline (span-level) content: bold, italic, code, links, strikethrough,
-subscript, superscript and footnotes.
+subscript, superscript, math and footnotes.
 
 Block elements accept either a plain string or a list mixing strings and
 :class:`Inline` objects, so the same content renders correctly in both
@@ -19,8 +19,8 @@ TextLike = Union[str, "Inline", Sequence[InlineContent]]
 @dataclass(frozen=True)
 class Inline:
     """A span of text with a style: 'bold', 'italic', 'code', 'link',
-    'strike', 'sub', 'sup', 'footnote' (whose text is the note itself) or
-    'ref' (whose href is the label it refers to)."""
+    'strike', 'sub', 'sup', 'math' (whose text is TeX), 'footnote' (whose
+    text is the note itself) or 'ref' (whose href is the label it refers to)."""
 
     style: str
     text: str
@@ -62,6 +62,17 @@ def sup(text: str) -> Inline:
     return Inline("sup", text)
 
 
+def math(tex: str) -> Inline:
+    """Inline math written in TeX, e.g. ``math(r"E = mc^2")``.
+
+    Typeset in LaTeX, Markdown (``$...$``) and HTML (MathJax); approximated
+    in Unicode in PDF ("E = mc²").
+    """
+    if not tex.strip():
+        raise ValueError("math() needs some TeX")
+    return Inline("math", tex.strip())
+
+
 def footnote(text: str) -> Inline:
     """A footnote: renders as a numbered marker where it is placed, with
     ``text`` shown as the note (numbered in document order)."""
@@ -69,10 +80,11 @@ def footnote(text: str) -> Inline:
 
 
 def ref(label: str, text: str = "") -> Inline:
-    """A cross-reference to the figure or table with this ``label``.
+    """A cross-reference to the section, figure, table or equation with this
+    ``label``.
 
-    Renders as "Figure 2" / "Table 1" (linked where the format allows), or
-    as ``text`` if given.
+    Renders as "Figure 2" / "Table 1" / "Equation 3" (linked where the
+    format allows), or as ``text`` if given.
     """
     return Inline("ref", text, label)
 

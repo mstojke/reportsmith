@@ -15,8 +15,9 @@ A small, dependency-free Python library for building reports programmatically an
 - Tables straight from data: lists of dicts, CSV files, or pandas DataFrames, with number formatting, missing-value placeholders, and automatic right-alignment of numeric columns
 - Table styling: column widths, striped rows, a totals footer, and coloured / bold cells (`Cell(...)`, or `styles=` rules for data tables)
 - Elements: headings, paragraphs, tables (with alignment and captions), bullet/numbered lists (nestable), definition lists, task lists, page breaks, code blocks, block quotes, images, horizontal rules, and format-specific raw passthrough
-- Inline formatting helpers: `bold()`, `italic()`, `code()`, `link()`, `strike()`, `sub()`, `sup()`, and numbered `footnote()`s — rendered natively in every format
+- Inline formatting helpers: `bold()`, `italic()`, `code()`, `link()`, `strike()`, `sub()`, `sup()`, `math()`, and numbered `footnote()`s — rendered natively in every format
 - Figures from image files, image bytes, or matplotlib plots, with numbered captions ("Figure 1", "Table 2") and `ref()` cross-references
+- Math in TeX: inline `math()` and numbered display `equation()`s, typeset in LaTeX, Markdown (`$...$`, rendered by GitHub), HTML (MathJax), and PDF (matplotlib's mathtext, with a Unicode fallback)
 - Optional section numbering ("1", "1.1") in every format, with `ref()` to sections
 - Running page headers and footers with page numbers ("Page 3 of 12") in PDF, LaTeX, and printed HTML
 - Cover pages with an optional logo, organization name, and confidentiality note (`Report(cover=Cover(...))`)
@@ -86,6 +87,7 @@ The **[examples site](https://mstojke.github.io/reportsmith/)** shows every exam
 | [Lists and page breaks](https://mstojke.github.io/reportsmith/#lists-and-page-breaks) | Definition and task lists, page breaks, `save()` |
 | [Headers, footers and section numbering](https://mstojke.github.io/reportsmith/#headers-footers-and-section-numbering) | Page numbers, running headers, numbered sections |
 | [Cover page](https://mstojke.github.io/reportsmith/#cover-page) | A title page with a logo, organization and note |
+| [Math](https://mstojke.github.io/reportsmith/#math) | Inline math, numbered equations, references to them |
 | [Merging, metadata and highlighting](https://mstojke.github.io/reportsmith/#merging-metadata-and-highlighting) | Combining reports, themes, syntax highlighting |
 
 The sources are in [`examples/`](https://github.com/mstojke/reportsmith/tree/main/examples). The site is rebuilt from `main` on every push by the [Examples site workflow](https://github.com/mstojke/reportsmith/actions/workflows/pages.yml).
@@ -122,6 +124,7 @@ Builder methods (all chainable, also available on sections):
 | `paragraph(content)` | Paragraph |
 | `quote(content)` | Block quote |
 | `code(source, language="")` | Fenced/`<pre>` code block |
+| `equation(tex, label="")` | Display equation in TeX; labelled equations are numbered and referable with `ref()` |
 | `bullet_list(items)` / `numbered_list(items)` | List; items may be text or a nested `ListElement` |
 | `definition_list(items)` | `(term, definition)` pairs or a mapping |
 | `task_list(items)` | Checklist of `(done, text)` pairs |
@@ -137,12 +140,12 @@ Builder methods (all chainable, also available on sections):
 | `add(element)` | Any pre-built element; a standalone `Section` or `Callout` is re-levelled to fit |
 | `extend(source, label_prefix="")` | Copies of another report's / section's content (or a list of elements), re-levelled; `label_prefix` renames labels and their `ref()`s |
 
-Anywhere text is accepted you may pass a plain string or a list mixing strings with `bold()`, `italic()`, `code()`, and `link(text, href)` spans.
+Anywhere text is accepted you may pass a plain string or a list mixing strings with `bold()`, `italic()`, `code()`, `math(tex)`, and `link(text, href)` spans.
 
 ### Export
 
 - `report.to_markdown(front_matter=False)` → GitHub-flavored Markdown string; `front_matter=True` adds a YAML metadata block
-- `report.to_html(full_document=True, css=None, theme="auto", highlight=False)` → HTML string; `full_document=False` returns just the body fragment, `css=` replaces the default stylesheet, `theme=` is `"auto"`, `"light"`, or `"dark"`
+- `report.to_html(full_document=True, css=None, theme="auto", highlight=False, mathjax=True)` → HTML string; `full_document=False` returns just the body fragment, `css=` replaces the default stylesheet, `theme=` is `"auto"`, `"light"`, or `"dark"`, and `mathjax=` controls the MathJax script added when the report has math (a URL, or `False`)
 - `report.to_latex(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False)` → LaTeX source; `full_document=False` returns just the body, `preamble=` is appended to the built-in preamble
 - `report.to_pdf(fonts=None, mono_fonts=None, highlight=False)` → PDF bytes (requires the `pdf` extra); pass TTF path quadruples to control typefaces
 - `highlight=True` on the HTML, LaTeX, and PDF exports colours code blocks (requires the `highlight` extra)

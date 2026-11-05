@@ -17,11 +17,12 @@ Quick start::
     report.save_html("report.html")
 """
 
-from .inline import Inline, bold, code, footnote, italic, link, ref, strike, sub, sup
+from .inline import Inline, bold, code, footnote, italic, link, math, ref, strike, sub, sup
 from .elements import (
     Callout,
     Cell,
     CodeBlock,
+    Equation,
     Figure,
     Heading,
     HorizontalRule,
@@ -62,6 +63,7 @@ __all__ = [
     "CodeBlock",
     "Image",
     "Figure",
+    "Equation",
     "Quote",
     "HorizontalRule",
     "Raw",
@@ -74,6 +76,7 @@ __all__ = [
     "strike",
     "sub",
     "sup",
+    "math",
     "footnote",
     "ref",
     "MarkdownRenderer",

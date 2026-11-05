@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   title block with the logo, organization and note.
 - `examples/cover_example.py`, on the examples site and compiled by the CI
   LaTeX job.
+- Math written in TeX: inline `math(r"E = mc^2")` anywhere text is
+  accepted, and display `equation(tex, label="")`. Labelled equations are
+  numbered "(1)", "(2)", ... and `ref()` refers to them ("Equation 1").
+  LaTeX typesets them natively (`amsmath` is now loaded); Markdown uses
+  `$...$` / `$$...$$` (rendered by GitHub); HTML loads MathJax from a CDN
+  when the report has math (`to_html(mathjax=...)` takes another URL or
+  `False`); PDF typesets display equations with matplotlib's mathtext when
+  installed, and shows inline math (and anything mathtext can't parse) as
+  Unicode text ("α² ≤ π").
+- `examples/math_example.py`, on the examples site and compiled by the CI
+  LaTeX job.
 
 ## [0.7.1] - 2026-11-04
 

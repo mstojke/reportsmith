@@ -54,6 +54,21 @@ class CodeBlock(Element):
         self.language = language
 
 
+class Equation(Element):
+    """A display equation written in TeX (without ``$`` delimiters).
+
+    A labelled equation is numbered "(1)", "(2)", ... in document order, and
+    :func:`~reportsmith.ref` refers to it as "Equation 1"; unlabelled
+    equations are not numbered.
+    """
+
+    def __init__(self, tex: str, label: str = ""):
+        if not tex.strip():
+            raise ValueError("An equation needs some TeX")
+        self.tex = tex.strip()
+        self.label = _check_label_format(label) if label else ""
+
+
 class ListElement(Element):
     """Bullet or numbered list. Items may be plain/inline text or nested lists."""
 
@@ -530,6 +545,12 @@ class Container(Element):
         self.children.append(CodeBlock(source, language))
         return self
 
+    def equation(self, tex: str, label: str = "") -> "Container":
+        """Add a display :class:`Equation` written in TeX. A ``label`` numbers
+        it and lets :func:`~reportsmith.ref` refer to it."""
+        self.children.append(Equation(tex, label))
+        return self
+
     def bullet_list(self, items: Sequence) -> "Container":
         self.children.append(ListElement(items, ordered=False))
         return self
@@ -744,7 +765,7 @@ def _prefix_labels(element: Element, prefix: str) -> None:
             for p in parts
         ]
 
-    if isinstance(element, (Figure, Table, Section)) and element.label:
+    if isinstance(element, (Figure, Table, Section, Equation)) and element.label:
         element.label = prefix + element.label
     if isinstance(element, (Heading, Paragraph, Quote)):
         element.parts = fix(element.parts)
