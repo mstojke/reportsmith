@@ -16,6 +16,7 @@ from ..elements import (
     Image,
     ListElement,
     DefinitionList,
+    Equation,
     TaskList,
     PageBreak,
     Paragraph,
@@ -27,9 +28,11 @@ from ..elements import (
 )
 from ..assets import Assets, path_reference
 from ..colors import to_hex
+from ..equations import tex_to_ascii
 from ..highlight import latex_block, latex_style_defs, require_pygments
 from ..inline import Inline, InlineContent
-from ..numbering import LATEX_PREFIXES, KIND_NAMES, Numbering
+from ..labels import callout_title, labels_for, toc_title
+from ..numbering import LATEX_PREFIXES, Numbering
 from ..page import segments
 
 if TYPE_CHECKING:
@@ -52,6 +55,7 @@ DEFAULT_PREAMBLE = r"""\usepackage{iftex}
 \usepackage{array}
 \usepackage{colortbl}
 \usepackage{caption}
+\usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{fancyvrb}
 \usepackage{xcolor}
@@ -167,11 +171,13 @@ class LatexRenderer:
         # numbered=True keeps working: LaTeX's usual three levels.
         self._depth = report.section_numbers or (3 if self.numbered else 0)
         self._numbering = Numbering(report, section_depth=self._depth)
+        self._labels = labels_for(report)
         self._in_callout = 0
         self._assets = Assets(self.assets_dir, self.assets_url) if self.assets_dir is not None else None
         body = "".join(self._render_element(child) for child in report.children)
         if not self.full_document:
             return body
+        title_page = self._cover(report) if report.cover is not None else "\\maketitle\n"
         options = f"[{self.class_options}]" if self.class_options else ""
         title = escape_latex(report.title)
         if report.subtitle:
@@ -192,6 +198,13 @@ class LatexRenderer:
         setup = ", ".join(f"{key}={{{escape_latex(value)}}}" for key, value in fields if value or key == "pdfauthor")
         parts.append(f"\\hypersetup{{{setup}}}\n")
         parts.append(self._page_style(report))
+        # LaTeX's own names for captions and the TOC, in the report's language
+        # (without babel, whose language files aren't always installed).
+        parts.append(
+            f"\\renewcommand{{\\figurename}}{{{escape_latex(self._labels['figure'])}}}\n"
+            f"\\renewcommand{{\\tablename}}{{{escape_latex(self._labels['table'])}}}\n"
+            f"\\renewcommand{{\\contentsname}}{{{escape_latex(self._labels['contents'])}}}\n"
+        )
         if self.highlight:
             parts.append(latex_style_defs())
         if self.preamble:
@@ -201,7 +214,8 @@ class LatexRenderer:
             f"\\title{{{title}}}\n"
             f"\\author{{{escape_latex(report.author)}}}\n"
             f"\\date{{{escape_latex(report.date)}}}\n"
-            "\n\\begin{document}\n\\maketitle\n\n"
+            "\n\\begin{document}\n"
+            f"{title_page}\n"
             f"{body}"
             "\\end{document}\n"
         )
@@ -220,6 +234,10 @@ class LatexRenderer:
             return f"{self._inline(el.parts)}\n\n"
         if isinstance(el, Quote):
             return f"\\begin{{quote}}\n{self._inline(el.parts)}\n\\end{{quote}}\n\n"
+        if isinstance(el, Equation):
+            if el.label:
+                return f"\\begin{{equation}}\\label{{eq:{el.label}}}\n{el.tex}\n\\end{{equation}}\n\n"
+            return f"\\[\n{el.tex}\n\\]\n\n"
         if isinstance(el, CodeBlock):
             return self._code(el)
         if isinstance(el, ListElement):
@@ -258,7 +276,7 @@ class LatexRenderer:
             # Grouped so the renamed heading stays local to this TOC. Our
             # depth 1 (top-level sections) is LaTeX's tocdepth 1 (\section).
             return (
-                f"{{\\renewcommand{{\\contentsname}}{{{escape_latex(el.title)}}}"
+                f"{{\\renewcommand{{\\contentsname}}{{{escape_latex(toc_title(el, self._labels))}}}"
                 f"\\setcounter{{tocdepth}}{{{el.depth}}}\\tableofcontents}}\n\n"
             )
         if isinstance(el, Callout):
@@ -266,11 +284,51 @@ class LatexRenderer:
             body = "".join(self._render_element(child) for child in el.children)
             self._in_callout -= 1
             return (
-                f"\\begin{{rscallout}}{{rs{el.kind}}}{{{escape_latex(el.display_title)}}}\n"
+                f"\\begin{{rscallout}}{{rs{el.kind}}}{{{escape_latex(callout_title(el, self._labels))}}}\n"
                 f"{body.rstrip(chr(10))}\n"
                 "\\end{rscallout}\n\n"
             )
         raise TypeError(f"Cannot render element of type {type(el).__name__}")
+
+    def _cover(self, report: "Report") -> str:
+        """A ``titlepage`` for the cover. It has no header or footer, and
+        the page after it is numbered 2, as in the PDF and HTML output."""
+        cover = report.cover
+        assert cover is not None
+        out = ["\\begin{titlepage}\n\\centering\n"]
+        if cover.logo is not None:
+            path = self._image_path(cover.logo, "logo")
+            out.append(f"\\includegraphics[width={cover.logo.width:g}\\linewidth]{{{path}}}\\par\n")
+        if cover.organization:
+            out.append(f"\\vspace{{1em}}{{\\large\\bfseries {escape_latex(cover.organization)}\\par}}\n")
+        out.append("\\vspace*{\\fill}\n")
+        out.append(f"{{\\Huge\\bfseries {escape_latex(report.title)}\\par}}\n")
+        if report.subtitle:
+            out.append(f"\\vspace{{1em}}{{\\Large\\color{{black!60}}{escape_latex(report.subtitle)}\\par}}\n")
+        meta = [escape_latex(x) for x in (report.author, report.date) if x]
+        if meta:
+            out.append("\\vspace{2em}{\\color{rsnote}\\rule{3cm}{1.5pt}}\\par\\vspace{2em}\n")
+            out.append("{\\large " + "\\\\[0.5em]\n".join(meta) + "\\par}\n")
+        out.append("\\vspace*{\\fill}\n")
+        if cover.note:
+            out.append(f"{{\\small\\color{{black!60}}{escape_latex(cover.note)}\\par}}\n")
+        out.append("\\end{titlepage}\n\\setcounter{page}{2}\n")
+        return "".join(out)
+
+    def _image_path(self, el: Figure, what: str = "figure") -> str:
+        """The ``\\includegraphics`` path of a figure, writing it to the
+        assets folder first when it isn't a file."""
+        if el.kind == "path":
+            return path_reference(el.source)
+        if el.format == "svg":
+            raise ValueError(f"LaTeX can't include an SVG {what}; pass PNG/JPEG data or a plot")
+        if self._assets is None:
+            raise ValueError(
+                f"A {what} from a plot or image bytes needs a file for LaTeX: use "
+                "save_latex(), or pass assets_dir to to_latex()"
+            )
+        # Plots are saved as PDF, so they stay vector graphics.
+        return self._assets.write(*el.image_data("pdf"))
 
     def _page_style(self, report: "Report") -> str:
         """fancyhdr setup for the running header and footer. The first page
@@ -422,18 +480,7 @@ class LatexRenderer:
         return f"\\begin{{tabular}}[t]{{@{{}}{align}@{{}}}}{lines}\\end{{tabular}}"
 
     def _figure(self, el: Figure) -> str:
-        if el.kind == "path":
-            path = path_reference(el.source)
-        else:
-            if el.format == "svg":
-                raise ValueError("LaTeX can't include SVG figures; pass PNG/JPEG data or a plot")
-            if self._assets is None:
-                raise ValueError(
-                    "Figures from plots or image bytes need files for LaTeX: use "
-                    "save_latex(), or pass assets_dir to to_latex()"
-                )
-            # Plots are saved as PDF, so they stay vector graphics.
-            path = self._assets.write(*el.image_data("pdf"))
+        path = self._image_path(el)
         width = f"[width={el.width:g}\\linewidth]" if el.width else ""
         out = ["\\begin{figure}[htbp]\n\\centering\n", f"\\includegraphics{width}{{{path}}}\n"]
         if el.caption:
@@ -447,7 +494,8 @@ class LatexRenderer:
         if el.src.startswith(("http://", "https://")):
             # LaTeX can't embed remote images; link to them instead.
             label = escape_latex(caption or el.src)
-            return f"\\href{{{_escape_url(el.src)}}}{{[Image: {label}]}}\n\n"
+            image = escape_latex(self._labels["image"])
+            return f"\\href{{{_escape_url(el.src)}}}{{[{image}: {label}]}}\n\n"
         out = ["\\begin{figure}[htbp]\n\\centering\n", f"\\includegraphics{{{el.src}}}\n"]
         if caption:
             out.append(f"\\caption*{{{escape_latex(caption)}}}\n")
@@ -473,6 +521,11 @@ class LatexRenderer:
             return f"\\emph{{{text}}}"
         if span.style == "code":
             return f"\\texttt{{{text}}}"
+        if span.style == "math":
+            # PDF bookmarks (from headings) can't hold math: they get the
+            # source with its markup removed.
+            bookmark = escape_latex(tex_to_ascii(span.text))
+            return f"\\texorpdfstring{{\\({span.text}\\)}}{{{bookmark}}}"
         if span.style == "link":
             return f"\\href{{{_escape_url(span.href)}}}{{{text}}}"
         if span.style == "strike":
@@ -491,7 +544,7 @@ class LatexRenderer:
                 # Unnumbered sections are referred to by title.
                 shown = escape_latex(self._numbering.ref_text(span.href))
             else:
-                shown = f"{KIND_NAMES[kind]}~\\ref*{{{target}}}"
+                shown = f"{escape_latex(self._numbering.kind_name(kind))}~\\ref*{{{target}}}"
             return f"\\hyperref[{target}]{{{shown}}}"
         if span.style == "footnote":
             return f"\\footnote{{{text}}}"

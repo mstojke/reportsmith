@@ -17,11 +17,12 @@ Quick start::
     report.save_html("report.html")
 """
 
-from .inline import Inline, bold, code, footnote, italic, link, ref, strike, sub, sup
+from .inline import Inline, bold, code, footnote, italic, link, math, ref, strike, sub, sup
 from .elements import (
     Callout,
     Cell,
     CodeBlock,
+    Equation,
     Figure,
     Heading,
     HorizontalRule,
@@ -37,16 +38,18 @@ from .elements import (
     Table,
     TableOfContents,
 )
+from .cover import Cover
 from .report import Report
 from .renderers.markdown import MarkdownRenderer
 from .renderers.html import HtmlRenderer
 from .renderers.pdf import PdfRenderer
 from .renderers.latex import LatexRenderer
 
-__version__ = "0.7.0"
+__version__ = "0.8"
 
 __all__ = [
     "Report",
+    "Cover",
     "Section",
     "Heading",
     "Paragraph",
@@ -60,6 +63,7 @@ __all__ = [
     "CodeBlock",
     "Image",
     "Figure",
+    "Equation",
     "Quote",
     "HorizontalRule",
     "Raw",
@@ -72,6 +76,7 @@ __all__ = [
     "strike",
     "sub",
     "sup",
+    "math",
     "footnote",
     "ref",
     "MarkdownRenderer",

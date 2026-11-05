@@ -30,6 +30,7 @@ from ..elements import (
     Image,
     ListElement,
     DefinitionList,
+    Equation,
     TaskList,
     PageBreak,
     Paragraph,
@@ -40,8 +41,10 @@ from ..elements import (
     TableOfContents,
 )
 from ..colors import to_rgb
+from ..equations import SCRIPT_FALLBACK, render_equation, tex_to_unicode, to_latin1
 from ..highlight import pdf_tokens, require_pygments
 from ..inline import Inline, InlineContent
+from ..labels import callout_title, labels_for, toc_title
 from ..numbering import Numbering
 from ..page import segments
 from ..toc import collect_entries, find_tocs, plain_text
@@ -171,7 +174,9 @@ class PdfRenderer:
         self._setup_fonts(pdf)
         # fpdf2 supports one TOC per document, so only the first is rendered.
         self._numbering = Numbering(report)
+        self._labels = labels_for(report)
         self._toc = next(find_tocs(report), None)
+        self._toc_title = toc_title(self._toc, self._labels) if self._toc else ""
         self._toc_entries = (
             collect_entries(report, self._toc.depth, self._numbering) if self._toc else []
         )
@@ -192,7 +197,11 @@ class PdfRenderer:
         if report.language:
             pdf.set_lang(report.language)
         pdf.set_creator(f"reportsmith {__version__}")
-        self._title_block(pdf, report)
+        if report.cover is not None:
+            self._cover(pdf, report)
+            pdf.add_page()
+        else:
+            self._title_block(pdf, report)
         for child in report.children:
             self._element(pdf, child)
         if self._footnotes:
@@ -230,8 +239,10 @@ class PdfRenderer:
 
     def _page_band(self, pdf, report: "Report", band, top: bool) -> None:
         """Draw a running header (top) or footer (bottom) on the current page."""
-        if band is None or (top and pdf.page_no() == 1):
-            return  # the first page has the title block instead of a header
+        if band is None or (pdf.page_no() == 1 and (top or report.cover is not None)):
+            # The first page has the title block instead of a header; a
+            # cover page has neither header nor footer.
+            return
         x, y_before = pdf.get_x(), pdf.get_y()
         pdf.set_font(self.body_family, "", 8.5)
         pdf.set_text_color(*_MUTED)
@@ -270,6 +281,60 @@ class PdfRenderer:
         pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(6)
 
+    def _cover(self, pdf, report: "Report") -> None:
+        """Draw the cover on the first page: logo and organization at the
+        top, the title a third of the way down, the note at the foot."""
+        cover = report.cover
+        assert cover is not None
+        pdf.set_y(pdf.t_margin + 10)
+        if cover.logo is not None:
+            logo = cover.logo
+            w = pdf.epw * (logo.width or 1)
+            try:
+                if logo.kind == "path":
+                    source: object = str(logo.source)
+                else:
+                    source = io.BytesIO(logo.image_data("png")[0])
+                pdf.image(source, x=pdf.l_margin + (pdf.epw - w) / 2, w=w)
+            except Exception:
+                pdf.set_font(self.body_family, "I", 10)
+                pdf.set_text_color(*_MUTED)
+                name = self._labels["logo"]
+                shown = f"[{name}: {logo.source}]" if logo.kind == "path" else f"[{name}]"
+                pdf.multi_cell(0, 6, self._t(shown), align="C", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(6)
+        if cover.organization:
+            pdf.set_font(self.body_family, "B", 13)
+            pdf.set_text_color(*_MUTED)
+            pdf.multi_cell(0, 7, self._t(cover.organization), align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_y(max(pdf.get_y() + 12, pdf.h * 0.36))
+        pdf.set_text_color(*_TEXT)
+        pdf.set_font(self.body_family, "B", 30)
+        pdf.multi_cell(0, 13, self._t(report.title), align="C", new_x="LMARGIN", new_y="NEXT")
+        if report.subtitle:
+            pdf.ln(3)
+            pdf.set_font(self.body_family, "", 15)
+            pdf.set_text_color(*_MUTED)
+            pdf.multi_cell(0, 8, self._t(report.subtitle), align="C", new_x="LMARGIN", new_y="NEXT")
+        meta = [x for x in (report.author, report.date) if x]
+        if meta:
+            pdf.ln(10)
+            pdf.set_draw_color(*_ACCENT)
+            pdf.set_line_width(0.8)
+            pdf.line(pdf.w / 2 - 15, pdf.get_y(), pdf.w / 2 + 15, pdf.get_y())
+            pdf.set_line_width(0.2)
+            pdf.ln(10)
+            pdf.set_font(self.body_family, "", 12)
+            pdf.set_text_color(*_TEXT)
+            for line in meta:
+                pdf.multi_cell(0, 7, self._t(line), align="C", new_x="LMARGIN", new_y="NEXT")
+        if cover.note:
+            pdf.set_font(self.body_family, "", 9)
+            pdf.set_text_color(*_MUTED)
+            pdf.set_y(pdf.h - PAGE_MARGIN - 6)
+            pdf.cell(0, 5, self._t(cover.note), align="C")
+        pdf.set_text_color(*_TEXT)
+
     # -- elements --------------------------------------------------------
 
     def _element(self, pdf, el: Element) -> None:
@@ -295,6 +360,8 @@ class PdfRenderer:
             pdf.ln(1.5)
         elif isinstance(el, Quote):
             self._quote(pdf, el)
+        elif isinstance(el, Equation):
+            self._equation(pdf, el)
         elif isinstance(el, CodeBlock) and self.highlight and (runs := pdf_tokens(el.source, el.language)):
             self._highlighted_code(pdf, runs)
         elif isinstance(el, CodeBlock):
@@ -362,7 +429,7 @@ class PdfRenderer:
             y += h
 
         assert self._toc is not None  # only called while rendering a TOC
-        if self._toc.title:
+        if self._toc_title:
             advance(_TOC_TITLE_H)
             y += 2
         for _ in self._toc_entries:
@@ -377,10 +444,10 @@ class PdfRenderer:
         assert self._toc is not None
         pdf.set_x(pdf.l_margin)  # fpdf2 restores only the y of the reserved space
         pdf.set_text_color(*_TEXT)
-        if self._toc.title:
+        if self._toc_title:
             make_room(_TOC_TITLE_H)
             pdf.set_font(self.body_family, "B", _HEADING_SIZES[2])
-            pdf.cell(0, _TOC_TITLE_H, self._t(self._toc.title), new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, _TOC_TITLE_H, self._t(self._toc_title), new_x="LMARGIN", new_y="NEXT")
             pdf.ln(2)
         for entry in self._toc_entries:
             make_room(_TOC_ROW_H)
@@ -416,7 +483,7 @@ class PdfRenderer:
         pdf.set_x(root + 5)
         pdf.set_font(self.body_family, "B", BODY_SIZE)
         pdf.set_text_color(*color)
-        pdf.multi_cell(0, 6.5, self._t(el.display_title), new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(0, 6.5, self._t(callout_title(el, self._labels)), new_x="LMARGIN", new_y="NEXT")
         for child in el.children:
             self._element(pdf, child)
         end_page, end_y = pdf.page_no(), pdf.get_y()
@@ -560,6 +627,59 @@ class PdfRenderer:
                 self._write_parts(pdf, item, BODY_SIZE)
                 pdf.ln(BODY_SIZE * 0.55)
 
+    def _equation(self, pdf, el: Equation) -> None:
+        """A display equation: typeset by matplotlib's mathtext when it can
+        be, else approximated in Unicode text; centred, with "(n)" at the
+        right margin when numbered."""
+        number = self._numbering.equation_number(el)
+        tag_w = 14 if number else 0
+        rendered = render_equation(el.tex, size=BODY_SIZE * 1.15)
+        pdf.ln(1.5)
+        if rendered is not None:
+            data, width_pt, height_pt = rendered
+            w, h = width_pt * 25.4 / 72, height_pt * 25.4 / 72
+            room = pdf.epw - 2 * tag_w
+            if w > room:  # too wide: scale down to fit
+                w, h = room, h * room / w
+            if pdf.get_y() + h > pdf.page_break_trigger:
+                pdf.add_page()
+            self._mark_equation(pdf, el)
+            top = pdf.get_y()
+            pdf.image(io.BytesIO(data), x=pdf.l_margin + (pdf.epw - w) / 2, y=top, w=w, h=h)
+        else:
+            text = self._math_text(pdf, el.tex, BODY_SIZE + 1)
+            pdf.set_text_color(*_TEXT)
+            h = 7
+            if pdf.get_y() + h > pdf.page_break_trigger:
+                pdf.add_page()
+            self._mark_equation(pdf, el)
+            top = pdf.get_y()
+            pdf.set_xy(pdf.l_margin + tag_w, top)
+            pdf.cell(pdf.epw - 2 * tag_w, h, text, align="C")
+        if number:
+            pdf.set_font(self.body_family, "", BODY_SIZE)
+            pdf.set_text_color(*_TEXT)
+            pdf.set_xy(pdf.l_margin, top + h / 2 - 3)
+            pdf.cell(pdf.epw, 6, f"({number})", align="R")
+        pdf.set_xy(pdf.l_margin, top + h)
+        pdf.ln(3)
+
+    def _mark_equation(self, pdf, el: Equation) -> None:
+        if el.label:
+            pdf.set_link(self._ref_link(pdf, el.label), y=pdf.get_y(), page=pdf.page_no())
+
+    def _math_text(self, pdf, tex: str, size: Optional[float] = None, style: str = "") -> str:
+        """Math as Unicode text; super/subscript characters the current font
+        lacks are spelled out ("x^2"). With ``size``, the body font is set
+        first."""
+        if size is not None:
+            pdf.set_font(self.body_family, style, size)
+        text = tex_to_unicode(tex)
+        if not self.unicode:
+            return to_latin1(text)  # core fonts
+        missing = {c for c in text if c in SCRIPT_FALLBACK and not self._has_glyphs(pdf, c)}
+        return "".join(SCRIPT_FALLBACK[c] if c in missing else c for c in text)
+
     def _ref_link(self, pdf, label: str) -> int:
         # Created on first use, so references may come before their target.
         if label not in self._ref_links:
@@ -591,8 +711,10 @@ class PdfRenderer:
             # Missing/unreadable file: render a placeholder, keep going.
             pdf.set_font(self.body_family, "I", 10)
             pdf.set_text_color(*_MUTED)
-            missing = el.alt or (str(el.source) if el.kind == "path" else "figure")
-            pdf.multi_cell(0, 6, self._t(f"[Figure: {missing}]"), new_x="LMARGIN", new_y="NEXT")
+            missing = el.alt or (str(el.source) if el.kind == "path" else "")
+            name = self._labels["figure"]
+            pdf.multi_cell(0, 6, self._t(f"[{name}: {missing}]" if missing else f"[{name}]"),
+                           new_x="LMARGIN", new_y="NEXT")
         if el.caption:
             self._caption(pdf, el, align="C")
         pdf.ln(2.5)
@@ -670,7 +792,8 @@ class PdfRenderer:
             # Missing/remote/unreadable file: render a placeholder, keep going.
             pdf.set_font(self.body_family, "I", 10)
             pdf.set_text_color(*_MUTED)
-            pdf.multi_cell(0, 6, self._t(f"[Image: {el.alt or el.src}]"), new_x="LMARGIN", new_y="NEXT")
+            pdf.multi_cell(0, 6, self._t(f"[{self._labels['image']}: {el.alt or el.src}]"),
+                           new_x="LMARGIN", new_y="NEXT")
         else:
             if el.title:
                 pdf.set_font(self.body_family, "I", 9)
@@ -702,6 +825,8 @@ class PdfRenderer:
                 elif part.style == "code":
                     pdf.set_font(self.mono_family, base_style, size * 0.92)
                     pdf.write(h, text)
+                elif part.style == "math":
+                    pdf.write(h, self._math_text(pdf, part.text, size, base_style))
                 elif part.style == "link":
                     pdf.set_font(self.body_family, self._merge(base_style, "U"), size)
                     pdf.set_text_color(*_ACCENT)
@@ -775,6 +900,8 @@ class PdfRenderer:
                 out.append(mapped if self._has_glyphs(pdf, mapped) else p.text)
             elif p.style == "ref":
                 out.append(self._md_escape(self._numbering.ref_text(p.href, p.text)))
+            elif p.style == "math":
+                out.append(self._md_escape(self._math_text(pdf, p.text)))
             else:
                 out.append(self._md_escape(p.text))
         return "".join(out)
@@ -796,8 +923,9 @@ class PdfRenderer:
 
     def _endnotes(self, pdf) -> None:
         self._keep_with_next(pdf)
-        pdf.start_section(self._t("Notes"), level=0)
-        self._heading(pdf, ["Notes"], 2)
+        notes = self._labels["notes"]
+        pdf.start_section(self._t(notes), level=0)
+        self._heading(pdf, [notes], 2)
         for n, (text, link) in enumerate(self._footnotes, start=1):
             pdf.set_link(link, y=pdf.get_y(), page=pdf.page_no())
             pdf.set_font(self.body_family, "", 10)

@@ -6,21 +6,22 @@ This guide walks through every feature. For a terse signature-level listing, see
 
 ## Contents
 
-1. [Creating a report](#creating-a-report) — including [metadata](#metadata)
+1. [Creating a report](#creating-a-report) — including [metadata](#metadata), [language and labels](#language-and-labels) and [cover pages](#cover-page)
 2. [Sections](#sections) — including [section numbering](#section-numbering) and [reusing and merging content](#reusing-and-merging-content)
 3. [Text and inline formatting](#text-and-inline-formatting) — including [footnotes](#footnotes)
 4. [Tables](#tables) — including [table styling](#table-styling) and [tables from data](#tables-from-data)
 5. [Lists](#lists) — including [definition and task lists](#definition-lists-and-task-lists)
 6. [Code blocks, quotes, images, rules](#code-blocks-quotes-images-rules) — including [syntax highlighting](#syntax-highlighting)
 7. [Figures](#figures) — including [numbering and cross-references](#numbering-and-cross-references)
-8. [Callouts](#callouts)
-9. [Table of contents](#table-of-contents)
-10. [Raw passthrough content](#raw-passthrough-content)
-11. [Exporting](#exporting) — including [page headers, footers and numbers](#page-headers-footers-and-numbers)
-12. [Exporting to LaTeX](#exporting-to-latex)
-13. [Exporting to PDF](#exporting-to-pdf)
-14. [Customizing the HTML output](#customizing-the-html-output)
-15. [Escaping and safety](#escaping-and-safety)
+8. [Math](#math)
+9. [Callouts](#callouts)
+10. [Table of contents](#table-of-contents)
+11. [Raw passthrough content](#raw-passthrough-content)
+12. [Exporting](#exporting) — including [page headers, footers and numbers](#page-headers-footers-and-numbers)
+13. [Exporting to LaTeX](#exporting-to-latex)
+14. [Exporting to PDF](#exporting-to-pdf)
+15. [Customizing the HTML output](#customizing-the-html-output)
+16. [Escaping and safety](#escaping-and-safety)
 
 ---
 
@@ -69,6 +70,59 @@ report = Report(
 | Markdown | Only with `to_markdown(front_matter=True)` / `save_markdown(..., front_matter=True)`: a YAML block at the top (`title`, `subtitle`, `author`, `date`, `description`, `keywords`, `lang`) for static-site generators such as Jekyll, Hugo, or MkDocs. |
 
 `keywords` must be a list (or other sequence) of strings; a single string raises `TypeError`.
+
+### Language and labels
+
+`language` also sets the words reportsmith writes itself: caption and reference names ("Figure 1", "Table 2", "Equation 1", "Section 3"), the table of contents title, callout titles, "Author:" / "Date:" in the title block, and the PDF's "Notes" section for footnotes.
+
+```python
+report = Report("Raport kwartalny", author="Dział analiz", language="pl")
+# Captions read "Rysunek 1" and "Tabela 1", the TOC is titled "Spis treści",
+# a warning callout is titled "Ostrzeżenie".
+```
+
+Included languages: Czech (`cs`), Dutch (`nl`), English (`en`), French (`fr`), German (`de`), Italian (`it`), Polish (`pl`), Portuguese (`pt`), Spanish (`es`) and Swedish (`sv`). Only the primary subtag counts, so `"de-CH"` and `"pt_BR"` work too; any other language uses the English labels.
+
+`labels=` overrides single labels — to shorten them, fix a wording you prefer, or add a language that isn't included:
+
+```python
+Report("Q3 Report", labels={"figure": "Fig.", "section": "§"})
+Report("Kvartalsrapport", language="da", labels={"figure": "Figur", "table": "Tabel", "contents": "Indhold"})
+```
+
+The keys are `figure`, `table`, `equation`, `section`, `contents`, `notes`, `author`, `date`, `note`, `tip`, `important`, `warning`, `caution`, `image` and `logo` (placeholders for missing images), and `back_to_reference` (the HTML footnote back-link's accessible name); an unknown key raises `ValueError`. `reportsmith.labels.TRANSLATIONS` holds the built-in tables.
+
+A title you pass yourself — `toc(title=...)`, `callout(..., title=...)` — is used as given; leave it out to get the label. `toc(title="")` still means no title.
+
+- **LaTeX** sets `\figurename`, `\tablename` and `\contentsname` to the labels, so LaTeX's own captions match. It doesn't load `babel`, whose language files aren't part of every TeX installation, so hyphenation stays English; add `preamble="\\usepackage[polish]{babel}"` (with the matching TeX Live language package) for proper hyphenation, keeping in mind that babel then sets those names itself.
+- **Markdown** callouts use GitHub's alert syntax, which shows GitHub's own English heading ("Note"); pass `title=` to add one in your language.
+- Dates are shown as given (ISO by default) and aren't localized.
+
+### Cover page
+
+`cover=True` replaces the title block with a cover page: the title, subtitle, author and date centred on a page of their own. Pass a `Cover` to add a logo, an organization name, and a note at the foot of the page:
+
+```python
+from reportsmith import Cover, Report
+
+report = Report(
+    "Market Entry Assessment",
+    subtitle="Expanding into the Nordics",
+    author="Strategy Office",
+    cover=Cover(
+        logo="logo.png",                  # path, image bytes, or a matplotlib figure
+        logo_width=0.4,                   # fraction of the text width; default 0.3
+        organization="Northwind Logistics",
+        note="Confidential",
+    ),
+)
+```
+
+- **PDF and LaTeX:** the cover is page 1, with no running header or footer; the content starts on page 2. Page numbers count the cover, so the first content page shows "2" and `{pages}` is the total including the cover. LaTeX uses a `titlepage` environment instead of `\maketitle`.
+- **HTML:** a centred title area at the top of the page; when printed, it fills the first page and the `@page` header and footer are left off it.
+- **Markdown:** the logo, organization, title block and note, followed by a page-break `<div>` (as with `page_break()`).
+
+The logo accepts the same sources as [figures](#figures): an SVG logo works in HTML, Markdown and PDF but not LaTeX, and a logo from bytes or a plot needs `save_latex()` (or `assets_dir=`) for LaTeX. `report.cover` can also be set after the report is created (`report.cover = True`). Only the report itself has a cover: `extend()` copies content, not covers.
 
 ## Sections
 
@@ -426,6 +480,33 @@ s.table(headers, rows, caption="Revenue by region", label="revenue")
 
 In LaTeX, numbers come from LaTeX itself (`\caption`, `\label`, `\ref`), and plain `image()` captions are unnumbered (`\caption*`), so they match the other formats.
 
+## Math
+
+Write math in TeX: `math()` for inline math anywhere text is accepted, and `equation()` for a display equation. Use raw strings (`r"..."`) so backslashes stay as written.
+
+```python
+from reportsmith import math, ref
+
+s.paragraph(["Utilization is ", ref("utilization"), ", and the queue is stable while ", math(r"\rho < 1"), "."])
+s.equation(r"\rho = \frac{\lambda}{c\,\mu}", label="utilization")   # numbered (1)
+s.equation(r"\sigma = \sqrt{\frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2}")  # no label: unnumbered
+s.table(["Quantity", "Symbol"], [["Arrival rate", [math(r"\lambda")]]])
+```
+
+A **labelled** equation is numbered "(1)", "(2)", ... in document order, and `ref()` refers to it as "Equation 1"; unlabelled equations aren't numbered. Labels share one namespace with sections, figures and tables.
+
+| Format | Inline `math()` | `equation()` |
+| --- | --- | --- |
+| LaTeX | `\(...\)` (loads `amsmath`) | `\[...\]`, or an `equation` environment with `\label` when labelled |
+| Markdown | `$...$` | `$$...$$`, with `\tag{n}` when numbered — GitHub, and MathJax/KaTeX-based sites, typeset both |
+| HTML | `\(...\)` | `\[...\]` with `\tag{n}`; typeset by [MathJax](https://www.mathjax.org/) |
+| PDF | Unicode text: `math(r"\alpha^2 \le \pi")` reads "α² ≤ π" | Typeset with matplotlib's mathtext when matplotlib is installed; otherwise centred Unicode text |
+
+- **HTML:** a full document that contains math loads MathJax 3 from the jsDelivr CDN (`reportsmith.renderers.html.MATHJAX_URL`), so math needs a network connection to display; offline, the TeX source shows instead. `to_html(mathjax="/static/mathjax/tex-chtml.js")` loads another (e.g. self-hosted) MathJax build, and `mathjax=False` leaves the script out — as does `full_document=False`, where the page you embed the report in must load MathJax. Only `\(...\)` and `\[...\]` are read as math, so dollar signs in ordinary text are left alone.
+- **PDF:** mathtext covers most single-line TeX math — fractions, roots, sums and integrals with limits, Greek letters, accents — but not environments such as `aligned`, `cases` or matrices; those, and everything without matplotlib, fall back to a Unicode approximation. Inline math is always Unicode text; with the PDF core fonts (no Unicode font found or `fonts=()`), symbols outside Latin-1 are spelled out ("alpha <= pi").
+- **Bookmarks and tables of contents** show math in a heading as Unicode text (PDF, HTML, Markdown) or as the source without its markup (LaTeX's PDF bookmarks).
+- The TeX is passed through as written, unescaped, to LaTeX, Markdown and MathJax — so it must be valid TeX.
+
 ## Callouts
 
 `callout(kind, content=None, title="")` adds a highlighted box for notes, tips and warnings. There are five kinds, matching GitHub's alerts: `"note"`, `"tip"`, `"important"`, `"warning"` and `"caution"`.
@@ -443,7 +524,7 @@ with report.callout("warning", title="Breaking change") as c:
 
 `content`, if given, becomes the callout's first paragraph. `callout()` returns the new callout (not the container), so more content can be added — paragraphs, lists, code, tables, images, headings, even nested callouts. Sections and tables of contents aren't allowed inside a callout (they raise `TypeError`), so callouts never change the document outline; headings inside one stay out of the table of contents.
 
-The title defaults to the capitalized kind ("Warning"). Rendering:
+The title defaults to the kind's label in the report's language ("Warning"; "Ostrzeżenie" with `language="pl"` — see [Language and labels](#language-and-labels)). Rendering:
 
 | Format | Output |
 | --- | --- |
@@ -454,7 +535,7 @@ The title defaults to the capitalized kind ("Warning"). Rendering:
 
 ## Table of contents
 
-`toc(title="Contents", depth=3)` adds a table of contents listing every section and explicit heading in the report, in document order. It always covers the whole report, so it can go anywhere — usually right after creating the report:
+`toc(title=None, depth=3)` adds a table of contents (titled "Contents", or its translation — see [Language and labels](#language-and-labels)) listing every section and explicit heading in the report, in document order. It always covers the whole report, so it can go anywhere — usually right after creating the report:
 
 ```python
 report = Report("Q3 Sales Report")
@@ -520,7 +601,7 @@ report = Report(
 Each is a string (centred) or a `(left, centre, right)` tuple. Placeholders: `{page}`, `{pages}` (the total), `{title}`, `{subtitle}`, `{author}` and `{date}`; write `{{` / `}}` for literal braces. An unknown placeholder raises `ValueError` when the report is created.
 
 - **Defaults:** no header, and a centred page number as the footer — `footer="{page}"`. Pass `footer=None` for no page numbers.
-- **The first page** shows the footer but not the header, since the title block is there.
+- **The first page** shows the footer but not the header, since the title block is there. With a [cover page](#cover-page), the first page has neither, and the header starts on page 2.
 - **PDF:** drawn in small muted text in the page margins.
 - **LaTeX:** set up with `fancyhdr`, and `lastpage` for `{pages}`. The first page uses the `plain` style (footer only).
 - **HTML:** `@page` margin boxes in the stylesheet, used when the page is printed or saved as PDF from the browser. Chromium-based browsers (Chrome, Edge) and paged-media tools such as WeasyPrint, Paged.js and Prince support them; Firefox and Safari currently print without them. `reportsmith.renderers.html.page_css(report)` returns just these rules.
@@ -565,7 +646,7 @@ Options (on `to_latex()`, `save_latex()`, and `LatexRenderer`):
 
 - `full_document=False` returns only the body (sections onward — no preamble, title block, or `\begin{document}`), ready to `\input` into your own document. Your document then needs the packages listed in `reportsmith.renderers.latex.DEFAULT_PREAMBLE`, and the `rscallout` environment and `rs*` colours defined there if the report contains callouts.
 - `document_class="report"` / `class_options="12pt,letterpaper"` change the `\documentclass` line.
-- `preamble="..."` is appended after the built-in preamble, e.g. `preamble="\\usepackage{amsmath}"` or `\\renewcommand` tweaks.
+- `preamble="..."` is appended after the built-in preamble, e.g. `preamble="\\usepackage{siunitx}"` or `\\renewcommand` tweaks.
 - `numbered=True` numbers sections (three levels, LaTeX's default); by default they are unnumbered (but still bookmarked). `Report(section_numbers=...)` does the same in every format and takes precedence.
 - `assets_dir=...` (on `to_latex()` and `LatexRenderer`): where to write figures made from plots or image bytes. `save_latex()` uses a `<name>_files/` folder automatically.
 

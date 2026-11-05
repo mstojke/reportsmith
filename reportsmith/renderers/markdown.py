@@ -17,6 +17,7 @@ from ..elements import (
     Image,
     ListElement,
     DefinitionList,
+    Equation,
     TaskList,
     PageBreak,
     Paragraph,
@@ -28,6 +29,7 @@ from ..elements import (
 )
 from ..assets import Assets, data_uri, path_reference
 from ..inline import Inline, InlineContent
+from ..labels import labels_for, toc_title
 from ..numbering import Numbering
 from ..toc import TocEntry, build_tree, collect_entries, heading_anchors, plain_text
 
@@ -58,14 +60,18 @@ class MarkdownRenderer:
     def render(self, report: "Report") -> str:
         self._report = report
         self._numbering = Numbering(report)
+        self._labels = labels_for(report)
         self._assets = Assets(self.assets_dir, self.assets_url) if self.assets_dir is not None else None
         self._anchors = heading_anchors(report, self._numbering)
         self._footnotes: list[str] = []
         blocks: list[str] = [self._front_matter(report)] if self.front_matter else []
-        blocks.append(f"# {report.title}")
-        meta = self._metadata_lines(report)
-        if meta:
-            blocks.append("\n".join(meta))
+        if report.cover is not None:
+            blocks.extend(self._cover(report))
+        else:
+            blocks.append(f"# {report.title}")
+            meta = self._metadata_lines(report)
+            if meta:
+                blocks.append("\n".join(meta))
         for child in report.children:
             blocks.extend(self._render_element(child))
         if self._footnotes:
@@ -91,14 +97,33 @@ class MarkdownRenderer:
         lines = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in fields if value]
         return "---\n" + "\n".join(lines) + "\n---"
 
+    def _cover(self, report: "Report") -> list[str]:
+        # Markdown has no pages: the cover is a title area, then a page
+        # break for renderers that keep HTML styles (as with page_break()).
+        cover = report.cover
+        assert cover is not None
+        blocks = []
+        if cover.logo is not None:
+            blocks.append(self._figure(cover.logo))
+        if cover.organization:
+            blocks.append(f"**{cover.organization}**")
+        blocks.append(f"# {report.title}")
+        meta = self._metadata_lines(report)
+        if meta:
+            blocks.append("\n".join(meta))
+        if cover.note:
+            blocks.append(f"*{cover.note}*")
+        blocks.append('<div style="break-after: page"></div>')
+        return blocks
+
     def _metadata_lines(self, report: "Report") -> list[str]:
         lines = []
         if report.subtitle:
             lines.append(f"*{report.subtitle}*  ")
         if report.author:
-            lines.append(f"**Author:** {report.author}  ")
+            lines.append(f"**{self._labels['author']}:** {report.author}  ")
         if report.date:
-            lines.append(f"**Date:** {report.date}  ")
+            lines.append(f"**{self._labels['date']}:** {report.date}  ")
         return lines
 
     # -- elements --------------------------------------------------------
@@ -116,6 +141,11 @@ class MarkdownRenderer:
         if isinstance(el, Quote):
             text = self._inline(el.parts)
             return ["\n".join(f"> {line}" for line in text.splitlines() or [""])]
+        if isinstance(el, Equation):
+            # GitHub (and MathJax/KaTeX-based renderers) typeset $$...$$.
+            number = self._numbering.equation_number(el)
+            tag = f" \\tag{{{number}}}" if number else ""
+            return [f"$$\n{el.tex}{tag}\n$$"]
         if isinstance(el, CodeBlock):
             fence = "```"
             # Widen the fence if the source itself contains backtick fences.
@@ -168,7 +198,8 @@ class MarkdownRenderer:
         return "\n".join(f"> {line}" if line else ">" for line in lines)
 
     def _toc(self, el: TableOfContents) -> list[str]:
-        blocks = [f"**{el.title}**"] if el.title else []
+        title = toc_title(el, self._labels)
+        blocks = [f"**{title}**"] if title else []
         lines: list[str] = []
 
         def walk(entries: list[TocEntry], indent: int) -> None:
@@ -264,6 +295,8 @@ class MarkdownRenderer:
             return f"*{span.text}*"
         if span.style == "code":
             return f"`{span.text}`"
+        if span.style == "math":
+            return f"${span.text}$"
         if span.style == "link":
             return f"[{span.text}]({span.href})"
         if span.style == "strike":

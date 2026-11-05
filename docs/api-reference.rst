@@ -10,11 +10,11 @@ Everything documented here is importable from the top-level package:
 .. code-block:: python
 
    from reportsmith import (
-       Report, Section,
+       Report, Cover, Section,
        Heading, Paragraph, Quote, CodeBlock, ListElement, DefinitionList,
        TaskList, PageBreak, Table, Image,
-       HorizontalRule, Raw, TableOfContents, Callout, Figure, Cell,
-       Inline, bold, italic, code, link, strike, sub, sup, footnote, ref,
+       HorizontalRule, Raw, TableOfContents, Callout, Figure, Cell, Equation,
+       Inline, bold, italic, code, link, strike, sub, sup, math, footnote, ref,
        MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer,
    )
 
@@ -30,7 +30,7 @@ Type aliases
 Report
 ======
 
-.. py:class:: Report(title, author="", date=None, subtitle="", description="", keywords=(), language="en", header=None, footer="{page}", section_numbers=False)
+.. py:class:: Report(title, author="", date=None, subtitle="", description="", keywords=(), language="en", header=None, footer="{page}", section_numbers=False, cover=False, labels=None)
 
    Top-level container.
 
@@ -47,7 +47,16 @@ Report
    :param keywords: Sequence of strings: HTML ``<meta name="keywords">``,
       PDF keywords, LaTeX ``pdfkeywords``, Markdown front matter.
    :param str language: Language tag: HTML ``lang``, PDF language, LaTeX
-      ``pdflang``, Markdown front matter ``lang``.
+      ``pdflang``, Markdown front matter ``lang``. Also picks the built-in
+      labels ("Figure", "Contents", "Note", ...): ``cs``, ``de``, ``en``,
+      ``es``, ``fr``, ``it``, ``nl``, ``pl``, ``pt`` and ``sv`` are
+      included (by primary subtag); others use English.
+   :param labels: Mapping overriding single labels, e.g. ``{"figure":
+      "Fig."}``. Keys: ``figure``, ``table``, ``equation``, ``section``,
+      ``contents``, ``notes``, ``author``, ``date``, ``note``, ``tip``,
+      ``important``, ``warning``, ``caution``, ``image``, ``logo``,
+      ``back_to_reference``. Unknown keys raise ``ValueError``; non-string
+      values ``TypeError``. See ``reportsmith.labels``.
    :param header: Running header for PDF, LaTeX and printed HTML: a string
       (centred) or a ``(left, centre, right)`` tuple, with ``{page}``,
       ``{pages}``, ``{title}``, ``{subtitle}``, ``{author}`` and ``{date}``
@@ -57,7 +66,11 @@ Report
    :param section_numbers: ``True`` numbers sections and headings three
       levels deep ("1", "1.1", "1.1.1") in every format; an int 1–5 sets the
       depth; ``False`` (default) leaves them unnumbered.
-   :raises TypeError: if *keywords* is a single string.
+   :param cover: ``True`` for a cover page with the title, subtitle, author
+      and date, or a :class:`Cover`; ``False`` / ``None`` (default) for the
+      usual title block. Also settable later as ``report.cover``.
+   :raises TypeError: if *keywords* is a single string, or *cover* is not a
+      bool, ``None`` or :class:`Cover`.
    :raises ValueError: for an invalid header/footer template or numbering
       depth.
 
@@ -71,7 +84,7 @@ Report
       *assets_dir* when given. ``front_matter=True`` starts the document
       with a YAML block of the report's metadata.
 
-   .. py:method:: to_html(full_document=True, css=None, theme="auto", highlight=False) -> str
+   .. py:method:: to_html(full_document=True, css=None, theme="auto", highlight=False, mathjax=True) -> str
 
       Render the report as HTML: a full standalone page with embedded CSS,
       or just the body markup when ``full_document=False``. ``css`` replaces
@@ -79,6 +92,10 @@ Report
       ``"dark"``) chooses its colours.
       ``highlight=True`` colours code blocks with Pygments (``pip install
       reportsmith[highlight]``); see :ref:`highlighting`.
+      A full document containing math loads MathJax
+      (``reportsmith.renderers.html.MATHJAX_URL``) to typeset it;
+      ``mathjax`` may be the URL of another MathJax build, or ``False`` to
+      leave the script out. :meth:`save_html` takes the same options.
 
    .. py:method:: save_markdown(path, front_matter=False) -> pathlib.Path
 
@@ -127,6 +144,22 @@ Report
 
       :raises ValueError: for any other extension.
 
+.. py:class:: Cover(logo=None, logo_width=0.3, organization="", note="")
+
+   A cover page for :class:`Report` (``Report(cover=Cover(...))``). It
+   replaces the title block and fills the first page, which has no running
+   header or footer; content starts on page 2 (PDF, LaTeX, printed HTML).
+
+   :param logo: An image at the top: a file path, image bytes (PNG, JPEG,
+      GIF or SVG), or a plot with ``savefig()``, as for :meth:`Container.figure`.
+   :param float logo_width: The logo's width as a fraction (0, 1] of the
+      text width.
+   :param str organization: A name shown under the logo.
+   :param str note: Small print at the foot of the page, e.g.
+      "Confidential".
+   :raises ValueError: if *logo_width* is outside (0, 1].
+   :raises TypeError: for an unsupported *logo* source.
+
 Container (builder API)
 =======================
 
@@ -164,6 +197,12 @@ Container (builder API)
    .. py:method:: code(source, language="") -> Container
 
       Add a :class:`CodeBlock`.
+
+   .. py:method:: equation(tex, label="") -> Container
+
+      Add a display :class:`Equation` written in TeX (no ``$``
+      delimiters). A *label* numbers it "(1)", "(2)", ... and makes it
+      referable with :func:`ref` ("Equation 1").
 
    .. py:method:: bullet_list(items) -> Container
 
@@ -213,7 +252,7 @@ Container (builder API)
 
       Add a :class:`Raw` passthrough block.
 
-   .. py:method:: toc(title="Contents", depth=3) -> Container
+   .. py:method:: toc(title=None, depth=3) -> Container
 
       Add a :class:`TableOfContents` for the whole report.
 
@@ -383,6 +422,17 @@ render-agnostic.
 
       :raises TypeError: if *df* is not DataFrame-like.
 
+.. py:class:: Equation(tex, label="")
+
+   A display equation written in TeX. Labelled equations are numbered in
+   document order; unlabelled ones are not. LaTeX: ``\[...\]``, or an
+   ``equation`` environment with ``\label``. Markdown: ``$$...$$`` (with
+   ``\tag{n}``). HTML: ``<div class="equation">\[...\]</div>`` typeset
+   by MathJax. PDF: typeset with matplotlib's mathtext when installed and
+   able to parse it, else approximated in Unicode text.
+
+   :raises ValueError: for empty *tex* or an invalid *label*.
+
 .. py:class:: Figure(source, caption="", alt="", label="", width=None, dpi=200)
 
    An image with an optional numbered caption ("Figure 1: ...").
@@ -453,12 +503,13 @@ render-agnostic.
 
    .. warning:: Content is **not escaped** — pass trusted content only.
 
-.. py:class:: TableOfContents(title="Contents", depth=3)
+.. py:class:: TableOfContents(title=None, depth=3)
 
    Lists every :class:`Section` and :class:`Heading` in the report, in
    document order, wherever the element is placed. ``depth`` limits the
-   levels listed (1 = top-level sections only); an empty ``title`` omits
-   the title line.
+   levels listed (1 = top-level sections only). ``title=None`` uses the
+   report's "contents" label ("Contents", "Spis treści", ...); an empty
+   ``title`` omits the title line.
 
    Markdown: bold title plus a nested list of links to GitHub-style heading
    anchors. HTML: ``<nav class="toc">`` with nested links; headings gain
@@ -477,8 +528,8 @@ render-agnostic.
    :param str kind: ``"note"``, ``"tip"``, ``"important"``, ``"warning"``
       or ``"caution"``.
    :param content: Optional ``TextLike``; becomes the first paragraph.
-   :param str title: Shown above the content; defaults to the capitalized
-      kind (see ``display_title``).
+   :param str title: Shown above the content; defaults to the kind's label
+      in the report's language ("Warning", "Ostrzeżenie", ...).
    :raises ValueError: for any other ``kind``.
    :raises TypeError: from ``section()``, ``toc()``, or ``add()`` with a
       :class:`Section` or :class:`TableOfContents` — callouts never affect
@@ -535,10 +586,18 @@ Inline spans
    Subscript / superscript. Markdown and HTML ``<sub>`` / ``<sup>``;
    LaTeX ``\textsubscript`` / ``\textsuperscript``.
 
+.. py:function:: math(tex) -> Inline
+
+   Inline math written in TeX, e.g. ``math(r"E = mc^2")``. LaTeX
+   ``\(...\)``; Markdown ``$...$``; HTML ``\(...\)`` typeset by
+   MathJax; PDF and plain-text uses (bookmarks, TOC entries) a Unicode
+   approximation ("E = mc²"). Raises ``ValueError`` for empty *tex*.
+
 .. py:function:: ref(label, text="") -> Inline
 
-   A cross-reference to the section, or captioned figure or table, with
-   this *label*: "Section 2.1" / "Figure 2" / "Table 1", or *text* if given.
+   A cross-reference to the section, equation, or captioned figure or
+   table, with this *label*: "Section 2.1" / "Equation 1" / "Figure 2" /
+   "Table 1", or *text* if given.
    An unnumbered section is referred to by its title. A link in HTML, LaTeX
    (``\hyperref`` + ``\ref*``) and PDF; plain text in Markdown and in PDF
    table cells. Raises ``ValueError`` at render time for an unknown label.

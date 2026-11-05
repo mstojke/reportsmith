@@ -37,7 +37,7 @@ class TestElement:
 
     def test_defaults(self):
         el = TableOfContents()
-        assert (el.title, el.depth) == ("Contents", 3)
+        assert (el.title, el.depth) == (None, 3)  # None: the report language's "Contents"
 
     @pytest.mark.parametrize("depth", [0, 6, -1])
     def test_invalid_depth(self, depth):

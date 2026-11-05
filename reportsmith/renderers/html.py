@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from html import escape
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Union
 
 from ..elements import (
     Callout,
@@ -16,6 +16,7 @@ from ..elements import (
     Image,
     ListElement,
     DefinitionList,
+    Equation,
     TaskList,
     PageBreak,
     Paragraph,
@@ -29,6 +30,7 @@ from ..assets import data_uri, path_reference
 from ..colors import BACKGROUND_COLORS, DARK_BACKGROUND_COLORS, DARK_TEXT_COLORS, TEXT_COLORS
 from ..highlight import html_css as highlight_css, html_spans, require_pygments
 from ..inline import Inline, InlineContent
+from ..labels import callout_title, labels_for, toc_title
 from ..numbering import HTML_PREFIXES, Numbering, iter_elements
 from ..page import segments
 from ..toc import TocEntry, build_tree, collect_entries, find_tocs, heading_anchors
@@ -120,6 +122,17 @@ figcaption { margin-top: 0.4em; }
 table.striped tbody tr:nth-child(even) { background: var(--stripe); }
 tfoot td { font-weight: 600; border-top: 2px solid var(--muted); }
 td.cell-bold { font-weight: 600; }
+.equation { margin: 1em 0; overflow-x: auto; text-align: center; }
+.cover { display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 70vh; margin-bottom: 3rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border); }
+.cover-top { display: flex; flex-direction: column; align-items: center; gap: 1rem; width: 100%; }
+.cover-logo { max-height: 30vh; object-fit: contain; }
+.cover-org { color: var(--muted); font-size: 1.1rem; font-weight: 600; letter-spacing: 0.04em; }
+.cover-main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 3rem 0; }
+.cover h1 { font-size: 2.6rem; margin: 0; }
+.cover-subtitle { color: var(--muted); font-size: 1.3rem; margin-top: 0.6rem; }
+.cover-rule { width: 4rem; border-top: 3px solid var(--accent); margin: 1.6rem auto; }
+.cover-meta { font-size: 1.05rem; }
+.cover-note { color: var(--muted); font-size: 0.85rem; }
 """ + "".join(
     f".cell-{n} {{ color: var(--cell-{n}); }}\n.cell-bg-{n} {{ background: var(--cell-bg-{n}); }}\n"
     for n in TEXT_COLORS
@@ -136,6 +149,8 @@ _PRINT_CSS = (
   pre { white-space: pre-wrap; overflow: visible; }
   a[href^="http"]::after { content: " (" attr(href) ")"; color: var(--muted); font-size: 0.85em; word-break: break-all; }
   .page-break { break-after: page; }
+  /* The cover fills the first page (vh is the page area when printing). */
+  .cover { height: 100vh; min-height: 0; box-sizing: border-box; margin: 0; padding: 0; border: none; break-after: page; overflow: hidden; }
 }
 """
 )
@@ -195,12 +210,65 @@ def page_css(report: "Report") -> str:
     if not boxes:
         return ""
     css = "@page {\n  margin: 20mm 18mm;\n" + "".join(boxes) + "}\n"
-    if report.header is not None:
-        # The first page has the title block instead of a header.
+    # The first page has the title block instead of a header; a cover
+    # page has neither header nor footer.
+    edges = ("top", "bottom") if report.cover is not None else ("top",) if report.header is not None else ()
+    if edges:
         css += "@page :first {\n" + "".join(
-            f"  @top-{position} {{ content: none; }}\n" for position in ("left", "center", "right")
+            f"  @{edge}-{position} {{ content: none; }}\n"
+            for edge in edges
+            for position in ("left", "center", "right")
         ) + "}\n"
     return css
+
+
+#: MathJax build loaded by HTML documents that contain math.
+MATHJAX_URL = "https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-chtml.js"
+
+
+def mathjax_tags(url: str = MATHJAX_URL) -> str:
+    """``<script>`` tags that typeset the report's math with MathJax.
+
+    Only ``\\(...\\)`` and ``\\[...\\]`` are read as math (not ``$``), so
+    dollar signs in ordinary text are left alone.
+    """
+    config = (
+        "window.MathJax = {tex: {inlineMath: [['\\\\(', '\\\\)']], "
+        "displayMath: [['\\\\[', '\\\\]']]}};"
+    )
+    return f"<script>{config}</script>\n<script defer src=\"{escape(url, quote=True)}\"></script>\n"
+
+
+def has_math(report: "Report") -> bool:
+    """Whether the report contains any equation or inline math."""
+    for el in iter_elements(report):
+        if isinstance(el, Equation):
+            return True
+        for parts in _inline_lists(el):
+            if any(isinstance(p, Inline) and p.style == "math" for p in parts):
+                return True
+    return False
+
+
+def _inline_lists(el: Element) -> list[list[InlineContent]]:
+    """The inline-content lists inside one element (not its children)."""
+    if isinstance(el, (Paragraph, Quote, Heading)):
+        return [el.parts]
+    if isinstance(el, Section):
+        return [el.title_parts]
+    if isinstance(el, ListElement):
+        out: list[list[InlineContent]] = []
+        for item in el.items:
+            out.extend(_inline_lists(item) if isinstance(item, ListElement) else [item])
+        return out
+    if isinstance(el, Table):
+        rows = [el.headers, *el.rows] + ([el.footer] if el.footer is not None else [])
+        return [cell for row in rows for cell in row]
+    if isinstance(el, DefinitionList):
+        return [part for pair in el.items for part in pair]
+    if isinstance(el, TaskList):
+        return [text for _, text in el.items]
+    return []
 
 
 #: The default stylesheet (automatic light/dark theme).
@@ -220,8 +288,10 @@ class HtmlRenderer:
         css: Optional[str] = None,
         theme: str = "auto",
         highlight: bool = False,
+        mathjax: Union[bool, str] = True,
     ):
         self.full_document = full_document
+        self.mathjax = mathjax
         self.css = theme_css(theme) if css is None else css
         self.highlight = highlight
         if highlight:
@@ -254,6 +324,7 @@ class HtmlRenderer:
             f"{meta_tags}"
             f"<title>{escape(report.title)}</title>\n"
             f"<style>\n{self.css}{page_css(report)}</style>\n"
+            f"{self._math_scripts(report)}"
             "</head>\n<body>\n"
             f"{body}"
             "</body>\n</html>\n"
@@ -262,6 +333,7 @@ class HtmlRenderer:
     def _body(self, report: "Report") -> str:
         self._report = report
         self._numbering = Numbering(report)
+        self._labels = labels_for(report)
         # Headings only get ids when there is a TOC or a ref() to link to
         # them, so output for other reports is unchanged.
         has_toc = any(find_tocs(report))
@@ -269,16 +341,7 @@ class HtmlRenderer:
         for el in iter_elements(report):
             if isinstance(el, Section) and el.label:
                 self._anchors[id(el)] = f"sec-{el.label}"
-        parts = [f"<h1>{escape(report.title)}</h1>\n"]
-        meta = []
-        if report.subtitle:
-            meta.append(f'<div class="subtitle">{escape(report.subtitle)}</div>')
-        if report.author:
-            meta.append(f"<div><strong>Author:</strong> {escape(report.author)}</div>")
-        if report.date:
-            meta.append(f"<div><strong>Date:</strong> {escape(report.date)}</div>")
-        if meta:
-            parts.append('<div class="report-meta">\n' + "\n".join(meta) + "\n</div>\n")
+        parts = [self._cover(report) if report.cover is not None else self._title_block(report, self._labels)]
         self._footnotes: list[str] = []
         for child in report.children:
             parts.append(self._render_element(child))
@@ -287,10 +350,60 @@ class HtmlRenderer:
             for n, text in enumerate(self._footnotes, start=1):
                 parts.append(
                     f'<li id="fn-{n}">{escape(text)} <a href="#fnref-{n}" '
-                    f'class="footnote-back" aria-label="Back to reference {n}">&#8617;&#xFE0E;</a></li>\n'
+                    f'class="footnote-back" aria-label="{escape(self._labels["back_to_reference"], quote=True)} {n}">&#8617;&#xFE0E;</a></li>\n'
                 )
             parts.append("</ol>\n</section>\n")
         return "".join(parts)
+
+    def _math_scripts(self, report: "Report") -> str:
+        if not self.mathjax or not has_math(report):
+            return ""
+        return mathjax_tags(MATHJAX_URL if self.mathjax is True else str(self.mathjax))
+
+    @staticmethod
+    def _title_block(report: "Report", labels: dict) -> str:
+        out = f"<h1>{escape(report.title)}</h1>\n"
+        meta = []
+        if report.subtitle:
+            meta.append(f'<div class="subtitle">{escape(report.subtitle)}</div>')
+        if report.author:
+            meta.append(f"<div><strong>{escape(labels['author'])}:</strong> {escape(report.author)}</div>")
+        if report.date:
+            meta.append(f"<div><strong>{escape(labels['date'])}:</strong> {escape(report.date)}</div>")
+        if meta:
+            out += '<div class="report-meta">\n' + "\n".join(meta) + "\n</div>\n"
+        return out
+
+    @staticmethod
+    def _cover(report: "Report") -> str:
+        cover = report.cover
+        assert cover is not None
+        out = ['<header class="cover">\n<div class="cover-top">\n']
+        logo = cover.logo
+        if logo is not None:
+            if logo.kind == "path":
+                src = path_reference(logo.source)
+            else:
+                src = data_uri(*logo.image_data("png"))
+            out.append(
+                f'<img class="cover-logo" src="{escape(src, quote=True)}" '
+                f'alt="{escape(logo.alt, quote=True)}" style="width:{(logo.width or 1) * 100:g}%">\n'
+            )
+        if cover.organization:
+            out.append(f'<div class="cover-org">{escape(cover.organization)}</div>\n')
+        out.append('</div>\n<div class="cover-main">\n')
+        out.append(f"<h1>{escape(report.title)}</h1>\n")
+        if report.subtitle:
+            out.append(f'<div class="cover-subtitle">{escape(report.subtitle)}</div>\n')
+        meta = [escape(x) for x in (report.author, report.date) if x]
+        if meta:
+            out.append('<div class="cover-rule"></div>\n')
+            out.append('<div class="cover-meta">' + "<br>\n".join(meta) + "</div>\n")
+        out.append("</div>\n")
+        if cover.note:
+            out.append(f'<div class="cover-note">{escape(cover.note)}</div>\n')
+        out.append("</header>\n")
+        return "".join(out)
 
     # -- elements --------------------------------------------------------
 
@@ -306,6 +419,11 @@ class HtmlRenderer:
             return f"<p>{self._inline(el.parts)}</p>\n"
         if isinstance(el, Quote):
             return f"<blockquote><p>{self._inline(el.parts)}</p></blockquote>\n"
+        if isinstance(el, Equation):
+            number = self._numbering.equation_number(el)
+            tag = f" \\tag{{{number}}}" if number else ""
+            target = f' id="eq-{escape(el.label, quote=True)}"' if el.label else ""
+            return f'<div class="equation"{target}>\\[{escape(el.tex)}{tag}\\]</div>\n'
         if isinstance(el, CodeBlock):
             cls = f' class="language-{escape(el.language, quote=True)}"' if el.language else ""
             spans = html_spans(el.source, el.language) if self.highlight else None
@@ -350,7 +468,7 @@ class HtmlRenderer:
         if isinstance(el, Callout):
             out = [
                 f'<div class="callout callout-{el.kind}">\n',
-                f'<p class="callout-title">{escape(el.display_title)}</p>\n',
+                f'<p class="callout-title">{escape(callout_title(el, self._labels))}</p>\n',
             ]
             out.extend(self._render_element(child) for child in el.children)
             out.append("</div>\n")
@@ -367,10 +485,11 @@ class HtmlRenderer:
         return f' id="{escape(anchor, quote=True)}"' if anchor else ""
 
     def _toc(self, el: TableOfContents) -> str:
-        label = escape(el.title or "Contents", quote=True)
+        title = toc_title(el, self._labels)
+        label = escape(title or self._labels["contents"], quote=True)
         out = [f'<nav class="toc" aria-label="{label}">\n']
-        if el.title:
-            out.append(f'<div class="toc-title">{escape(el.title)}</div>\n')
+        if title:
+            out.append(f'<div class="toc-title">{escape(title)}</div>\n')
 
         def walk(entries: list[TocEntry]) -> None:
             out.append("<ul>\n")
@@ -501,6 +620,8 @@ class HtmlRenderer:
             return f"<em>{text}</em>"
         if span.style == "code":
             return f"<code>{text}</code>"
+        if span.style == "math":
+            return f'<span class="math">\\({text}\\)</span>'
         if span.style == "link":
             return f'<a href="{escape(span.href, quote=True)}">{text}</a>'
         if span.style == "strike":

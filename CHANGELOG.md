@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [0.8] - 2026-11-05
+
+### Added
+
+- Cover pages: `Report(cover=True)` puts the title, subtitle, author and
+  date on a page of their own, and `Report(cover=Cover(logo=...,
+  logo_width=..., organization=..., note=...))` adds a logo (path, image
+  bytes or plot), an organization name and a note at the foot of the
+  page. In PDF and LaTeX (a `titlepage`) the cover is page 1 with no
+  header or footer, and the content starts on page 2; in HTML it is a
+  centred title area that fills the first printed page; in Markdown, the
+  title block with the logo, organization and note.
+- `examples/cover_example.py`, on the examples site and compiled by the CI
+  LaTeX job.
+- Math written in TeX: inline `math(r"E = mc^2")` anywhere text is
+  accepted, and display `equation(tex, label="")`. Labelled equations are
+  numbered "(1)", "(2)", ... and `ref()` refers to them ("Equation 1").
+  LaTeX typesets them natively (`amsmath` is now loaded); Markdown uses
+  `$...$` / `$$...$$` (rendered by GitHub); HTML loads MathJax from a CDN
+  when the report has math (`to_html(mathjax=...)` takes another URL or
+  `False`); PDF typesets display equations with matplotlib's mathtext when
+  installed, and shows inline math (and anything mathtext can't parse) as
+  Unicode text ("α² ≤ π").
+- `examples/math_example.py`, on the examples site and compiled by the CI
+  LaTeX job.
+  - Built-in labels in the report's language: `Report(language="pl")` writes
+  "Rysunek 1", "Tabela 1", "Równanie 1", "Spis treści", "Uwaga", "Autor:"
+  and so on. Czech, Dutch, English, French, German, Italian, Polish,
+  Portuguese, Spanish and Swedish are included (by primary subtag, so
+  `"de-CH"` works); other languages use English. `Report(labels={...})`
+  overrides single labels, e.g. `{"figure": "Fig."}`. LaTeX output sets
+  `\figurename`, `\tablename` and `\contentsname` to match.
+- `examples/labels_example.py`, on the examples site and compiled by the CI
+  LaTeX job.
+
+### Changed
+
+- `toc()` and `TableOfContents` default to `title=None`, meaning the
+  report's "Contents" label; passing a title (or `""` for none) works as
+  before. Callout titles likewise default to the label for their kind.
+
+## [0.7.1] - 2026-11-04
+
 ### Added
 
 - An examples website on GitHub Pages (https://mstojke.github.io/reportsmith/):

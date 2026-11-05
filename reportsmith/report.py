@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import datetime as _dt
 from pathlib import Path
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Mapping, Optional, Sequence, Union
 
+from .cover import Cover, make_cover
 from .elements import Container
+from .labels import check_labels
 from .page import parse_band
 
 
@@ -23,12 +25,23 @@ class Report(Container):
     HTML ``<meta>`` tags and ``lang``, PDF document properties, LaTeX's PDF
     fields, and optional Markdown front matter.
 
+    ``language`` also sets the built-in labels ("Figure", "Contents",
+    "Note", ...): Czech, Dutch, English, French, German, Italian, Polish,
+    Portuguese, Spanish and Swedish are included, and other languages use
+    English. ``labels`` overrides single labels, e.g. ``{"figure": "Fig."}``;
+    see :mod:`reportsmith.labels` for the keys.
+
     ``header`` and ``footer`` are running page headers/footers for PDF,
     LaTeX and printed HTML: a string (centred) or a ``(left, centre,
     right)`` tuple, with ``{page}``, ``{pages}``, ``{title}``,
     ``{subtitle}``, ``{author}`` and ``{date}`` placeholders. The header is
     left off the first page. The default footer is the page number;
     ``None`` removes it.
+
+    ``cover`` adds a cover page: ``True`` for one with the title, subtitle,
+    author and date, or a :class:`~reportsmith.Cover` to add a logo, an
+    organization name and a note. It replaces the title block and fills the
+    first page, which then has neither header nor footer.
 
     ``section_numbers`` numbers sections and headings ("1", "1.1", ...) in
     every format: ``True`` numbers three levels deep, an int 1-5 sets the
@@ -47,6 +60,8 @@ class Report(Container):
         header: Union[None, str, Sequence[str]] = None,
         footer: Union[None, str, Sequence[str]] = "{page}",
         section_numbers: Union[bool, int] = False,
+        cover: Union[None, bool, Cover] = False,
+        labels: Optional[Mapping[str, str]] = None,
     ):
         super().__init__()
         self.title = title
@@ -57,6 +72,7 @@ class Report(Container):
             raise TypeError("keywords must be a sequence of strings, not a single string")
         self.keywords = [str(k) for k in keywords]
         self.language = language
+        self.labels = check_labels(labels)
         self.header = parse_band(header, "header")
         self.footer = parse_band(footer, "footer")
         if isinstance(section_numbers, bool):
@@ -64,6 +80,7 @@ class Report(Container):
         if not 0 <= section_numbers <= 5:
             raise ValueError(f"section_numbers must be a bool or a depth 0-5, got {section_numbers}")
         self.section_numbers = section_numbers
+        self.cover = cover  # normalized by the setter
         if date is None:
             self.date = _dt.date.today().isoformat()
         elif isinstance(date, (_dt.date, _dt.datetime)):
@@ -71,6 +88,16 @@ class Report(Container):
         else:
             self.date = str(date)
         self._level = 1  # report title is <h1>, top-level sections are <h2>
+
+    @property
+    def cover(self) -> Optional[Cover]:
+        """The report's :class:`~reportsmith.Cover`, or ``None``. May be
+        set to ``True``, ``False``/``None`` or a ``Cover``."""
+        return self._cover
+
+    @cover.setter
+    def cover(self, value: Union[None, bool, Cover]) -> None:
+        self._cover = make_cover(value)
 
     # -- export ----------------------------------------------------------
 
@@ -94,6 +121,7 @@ class Report(Container):
         css: Optional[str] = None,
         theme: str = "auto",
         highlight: bool = False,
+        mathjax: Union[bool, str] = True,
     ) -> str:
         """Render the report as HTML.
 
@@ -102,12 +130,14 @@ class Report(Container):
         to replace the built-in stylesheet, or ``theme`` (``"auto"``,
         ``"light"`` or ``"dark"``) to choose its colours. ``highlight=True``
         colours code blocks with Pygments (``pip install
-        reportsmith[highlight]``).
+        reportsmith[highlight]``). A full document with math loads MathJax
+        from a CDN to typeset it: ``mathjax`` may be a URL of another
+        MathJax build (e.g. self-hosted), or ``False`` to leave it out.
         """
         from .renderers.html import HtmlRenderer
 
         return HtmlRenderer(
-            full_document=full_document, css=css, theme=theme, highlight=highlight
+            full_document=full_document, css=css, theme=theme, highlight=highlight, mathjax=mathjax
         ).render(self)
 
     def to_pdf(
@@ -182,10 +212,13 @@ class Report(Container):
         css: Optional[str] = None,
         theme: str = "auto",
         highlight: bool = False,
+        mathjax: Union[bool, str] = True,
     ) -> Path:
         """Write the HTML export to ``path`` and return it."""
         path = Path(path)
-        html = self.to_html(full_document=full_document, css=css, theme=theme, highlight=highlight)
+        html = self.to_html(
+            full_document=full_document, css=css, theme=theme, highlight=highlight, mathjax=mathjax
+        )
         path.write_text(html, encoding="utf-8")
         return path
 

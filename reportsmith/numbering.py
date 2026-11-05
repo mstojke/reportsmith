@@ -1,7 +1,8 @@
 """Numbering and cross-reference resolution shared by the renderers.
 
-Figures and tables with a caption are numbered separately ("Figure 1",
-"Table 1", ...) in document order, wherever they sit (sections, callouts).
+Figures and tables with a caption, and labelled equations, are numbered
+separately ("Figure 1", "Table 1", "(1)", ...) in document order, wherever
+they sit (sections, callouts).
 Sections and headings are numbered "1", "1.1", ... when the report asks for
 it (``Report(section_numbers=...)``), the same way LaTeX numbers them. A
 label maps to its figure, table or section so :func:`~reportsmith.ref` can
@@ -12,16 +13,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Iterator, Optional, Union
 
-from .elements import Container, Element, Figure, Heading, Section, Table
+from .elements import Container, Element, Equation, Figure, Heading, Section, Table
+from .labels import labels_for
 from .toc import heading_depth, iter_headings, plain_text
 
 if TYPE_CHECKING:
     from .report import Report
 
-#: Display names, and the prefixes used for HTML ids and LaTeX labels.
-KIND_NAMES = {"figure": "Figure", "table": "Table", "section": "Section"}
-HTML_PREFIXES = {"figure": "fig", "table": "tbl", "section": "sec"}
-LATEX_PREFIXES = {"figure": "fig", "table": "tab", "section": "sec"}
+#: English display names (see :mod:`reportsmith.labels` for translations),
+#: and the prefixes used for HTML ids and LaTeX labels.
+KIND_NAMES = {"figure": "Figure", "table": "Table", "section": "Section", "equation": "Equation"}
+HTML_PREFIXES = {"figure": "fig", "table": "tbl", "section": "sec", "equation": "eq"}
+LATEX_PREFIXES = {"figure": "fig", "table": "tab", "section": "sec", "equation": "eq"}
 
 Captioned = Union[Figure, Table]
 
@@ -47,10 +50,12 @@ class Numbering:
 
     def __init__(self, report: "Report", section_depth: Optional[int] = None):
         self._numbers: dict[int, int] = {}  # id(figure/table) -> number
+        self._equations: dict[int, int] = {}  # id(equation) -> number
         self._sections: dict[int, str] = {}  # id(section/heading) -> "2.1"
         # label -> (kind, number); a section's "number" may be "" (unnumbered)
         self._labels: dict[str, tuple[str, Union[int, str]]] = {}
         self._titles: dict[str, str] = {}  # section label -> plain title
+        self._names = labels_for(report)
 
         depth = report.section_numbers if section_depth is None else section_depth
         if depth:
@@ -63,6 +68,7 @@ class Numbering:
                     self._sections[id(heading)] = ".".join(map(str, counters[:d]))
 
         figures_tables = {"figure": 0, "table": 0}
+        equations = 0
         for el in iter_elements(report):
             if isinstance(el, Section) and el.label:
                 self._add_label(el.label, "section", self._sections.get(id(el), ""))
@@ -73,6 +79,10 @@ class Numbering:
                 self._numbers[id(el)] = figures_tables[kind]
                 if el.label:
                     self._add_label(el.label, kind, figures_tables[kind])
+            elif isinstance(el, Equation) and el.label:
+                equations += 1
+                self._equations[id(el)] = equations
+                self._add_label(el.label, "equation", equations)
 
     def _add_label(self, label: str, kind: str, number: Union[int, str]) -> None:
         if label in self._labels:
@@ -89,7 +99,11 @@ class Numbering:
     def caption_label(self, el: Captioned) -> str:
         """``"Figure 2"`` / ``"Table 1"``, or ``""`` for unnumbered items."""
         n = self.number(el)
-        return f"{KIND_NAMES[kind_of(el)]} {n}" if n else ""
+        return f"{self.kind_name(kind_of(el))} {n}" if n else ""
+
+    def equation_number(self, el: Equation) -> int:
+        """The equation's number, or 0 if it isn't numbered (no label)."""
+        return self._equations.get(id(el), 0)
 
     def section_number(self, el: Union[Section, Heading]) -> str:
         """``"2.1"`` for a numbered section/heading, else ``""``."""
@@ -105,8 +119,8 @@ class Numbering:
             return self._labels[label]
         except KeyError:
             raise ValueError(
-                f"ref({label!r}) points to no section, or captioned figure or table, "
-                "with that label"
+                f"ref({label!r}) points to no section, equation, or captioned figure "
+                "or table, with that label"
             ) from None
 
     def ref_text(self, label: str, text: str = "") -> str:
@@ -117,4 +131,8 @@ class Numbering:
             return text
         if kind == "section" and not number:
             return self._titles[label]
-        return f"{KIND_NAMES[kind]} {number}"
+        return f"{self.kind_name(kind)} {number}"
+
+    def kind_name(self, kind: str) -> str:
+        """"Figure", "Table", "Section" or "Equation", in the report's language."""
+        return self._names[kind]
