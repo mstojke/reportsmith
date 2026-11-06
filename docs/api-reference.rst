@@ -15,7 +15,7 @@ Everything documented here is importable from the top-level package:
        TaskList, PageBreak, Table, Image,
        HorizontalRule, Raw, TableOfContents, Callout, Figure, Cell, Equation,
        Inline, bold, italic, code, link, strike, sub, sup, math, footnote, ref,
-       MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer,
+       MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer, DocxRenderer,
    )
 
 Type aliases
@@ -134,12 +134,22 @@ Report
 
       Write the PDF export to *path* and return it (requires ``fpdf2``).
 
+   .. py:method:: to_docx(highlight=False) -> bytes
+
+      Render the report as a Word document (``.docx``), with no extra
+      packages. ``highlight=True`` colours code blocks with Pygments. See
+      :class:`DocxRenderer`.
+
+   .. py:method:: save_docx(path, highlight=False) -> pathlib.Path
+
+      Write the Word export to *path* and return it.
+
    .. py:method:: save(path, **options) -> pathlib.Path
 
       Write the report in the format given by *path*'s extension:
       ``.md`` / ``.markdown`` (:meth:`save_markdown`), ``.html`` / ``.htm``
-      (:meth:`save_html`), ``.tex`` (:meth:`save_latex`) or ``.pdf``
-      (:meth:`save_pdf`), case-insensitively. *options* are passed to that
+      (:meth:`save_html`), ``.tex`` (:meth:`save_latex`), ``.pdf``
+      (:meth:`save_pdf`) or ``.docx`` (:meth:`save_docx`), case-insensitively. *options* are passed to that
       method.
 
       :raises ValueError: for any other extension.
@@ -693,6 +703,21 @@ are convenience wrappers around these.
    only :class:`Raw` content with ``format="latex"`` is emitted.
 
    .. py:method:: render(report) -> str
+
+.. py:class:: DocxRenderer(highlight=False)
+
+   Renders a Report to a Word document: an Office Open XML package written
+   with the standard library. Headings use Word's built-in heading styles;
+   footnotes are Word footnotes; lists use Word numbering; tables repeat
+   their header row; figures are embedded PNG/JPEG/GIF pictures (SVG and
+   missing files become placeholders); ``ref()`` and TOC entries are
+   internal links; the TOC is a Word TOC field that Word updates (adding
+   page numbers) when the file is opened; headers and footers use PAGE /
+   NUMPAGES fields. Display equations are pictures from matplotlib's
+   mathtext when available, else Unicode text. :class:`Raw` content is
+   skipped. Output is deterministic: the same report gives the same bytes.
+
+   .. py:method:: render(report) -> bytes
 
 .. py:class:: PdfRenderer(fonts=None, mono_fonts=None, highlight=False)
 

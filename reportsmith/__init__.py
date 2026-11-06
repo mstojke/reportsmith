@@ -2,7 +2,7 @@
 
 Build a report programmatically from typed elements (headings, paragraphs,
 tables, lists, code blocks, images, ...) and export it to Markdown, a
-standalone styled HTML document, LaTeX, or PDF.
+standalone styled HTML document, LaTeX, PDF, or Word (.docx).
 
 Quick start::
 
@@ -44,6 +44,7 @@ from .renderers.markdown import MarkdownRenderer
 from .renderers.html import HtmlRenderer
 from .renderers.pdf import PdfRenderer
 from .renderers.latex import LatexRenderer
+from .renderers.docx import DocxRenderer
 
 __version__ = "0.8"
 
@@ -83,4 +84,5 @@ __all__ = [
     "HtmlRenderer",
     "PdfRenderer",
     "LatexRenderer",
+    "DocxRenderer",
 ]

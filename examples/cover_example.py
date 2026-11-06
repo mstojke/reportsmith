@@ -75,7 +75,7 @@ with report.section("Recommendation") as s:
         "Review the entry against targets after 18 months",
     ])
 
-for name in ("cover_report.md", "cover_report.html", "cover_report.tex", "cover_report.pdf"):
+for name in ("cover_report.md", "cover_report.html", "cover_report.tex", "cover_report.pdf", "cover_report.docx"):
     try:
         path = report.save(OUT / name)
     except ImportError:

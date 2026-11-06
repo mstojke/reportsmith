@@ -65,7 +65,7 @@ with report.section("Monthly Orders") as s:
         caption="Orders by month, with return rates over 5% flagged",
     )
 
-for name in ("table_styling_report.md", "table_styling_report.html", "table_styling_report.tex", "table_styling_report.pdf"):
+for name in ("table_styling_report.md", "table_styling_report.html", "table_styling_report.tex", "table_styling_report.pdf", "table_styling_report.docx"):
     try:
         print(f"Wrote {report.save(OUT / name)}")
     except ImportError:

@@ -47,7 +47,7 @@ with report.section("Results", label="results") as s:
 with report.section("Next Year") as s:
     s.paragraph(["Targets for next year build on ", ref("results"), "."])
 
-for name in ("pages_report.md", "pages_report.html", "pages_report.tex", "pages_report.pdf"):
+for name in ("pages_report.md", "pages_report.html", "pages_report.tex", "pages_report.pdf", "pages_report.docx"):
     try:
         print(f"Wrote {report.save(OUT / name)}")
     except ImportError:

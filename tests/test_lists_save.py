@@ -200,7 +200,7 @@ class TestSave:
         r.save(tmp_path / "doc.md")
         assert (tmp_path / "doc_files" / "figure-1.svg").exists()
 
-    @pytest.mark.parametrize("name", ["r.docx", "noext", "r.txt"])
+    @pytest.mark.parametrize("name", ["r.odt", "noext", "r.txt"])
     def test_unknown_extension(self, tmp_path, name):
         with pytest.raises(ValueError, match="extension"):
             build().save(tmp_path / name)

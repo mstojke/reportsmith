@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Word export: `to_docx()`, `save_docx()`, and `.docx` in `save()`, with no
+  extra packages (the Office Open XML is written with the standard
+  library). Headings use Word's built-in heading styles; the table of
+  contents is a Word TOC field that Word fills with page numbers when the
+  file is opened; footnotes are Word footnotes; lists use Word numbering;
+  tables repeat their header row and keep widths, stripes, totals rows and
+  cell colours; figures are embedded pictures; `ref()` links to bookmarks;
+  callouts, covers, section numbering, translated labels and running
+  headers/footers with PAGE / NUMPAGES fields carry over. `highlight=True`
+  colours code blocks. `DocxRenderer` is exported.
+- Every example writes a `.docx` too, and the examples site links it.
 
 ## [0.8] - 2026-11-05
 

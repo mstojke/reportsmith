@@ -88,6 +88,7 @@ written = [
     report.save_markdown(OUT / "data_tables_report.md"),
     report.save_html(OUT / "data_tables_report.html"),
     report.save_latex(OUT / "data_tables_report.tex"),
+    report.save_docx(OUT / "data_tables_report.docx"),
 ]
 try:
     written.append(report.save_pdf(OUT / "data_tables_report.pdf"))

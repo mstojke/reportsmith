@@ -54,7 +54,7 @@ with report.section("Variability") as s:
     s.paragraph("The standard deviation of the daily ticket count over n days:")
     s.equation(r"\sigma = \sqrt{\frac{1}{n} \sum_{i=1}^{n} \left(x_i - \bar{x}\right)^2}")
 
-for name in ("math_report.md", "math_report.html", "math_report.tex", "math_report.pdf"):
+for name in ("math_report.md", "math_report.html", "math_report.tex", "math_report.pdf", "math_report.docx"):
     try:
         path = report.save(OUT / name)
     except ImportError:

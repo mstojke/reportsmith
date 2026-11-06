@@ -19,7 +19,8 @@ class Report(Container):
     :class:`~reportsmith.elements.Container` (``paragraph``, ``table``,
     ``section``, ...) and exported with :meth:`to_markdown` /
     :meth:`to_html` / :meth:`to_latex` / :meth:`to_pdf`, or saved with the
-    matching ``save_*`` methods or :meth:`save`.
+    matching ``save_*`` methods or :meth:`save` (and :meth:`to_docx` /
+    :meth:`save_docx` for Word).
 
     ``description``, ``keywords`` and ``language`` are document metadata:
     HTML ``<meta>`` tags and ``lang``, PDF document properties, LaTeX's PDF
@@ -189,6 +190,23 @@ class Report(Container):
             highlight=highlight,
         ).render(self)
 
+    def to_docx(self, highlight: bool = False) -> bytes:
+        """Render the report as a Word document (``.docx`` bytes).
+
+        Needs no extra packages. ``highlight=True`` colours code blocks with
+        Pygments. A report with a table of contents asks Word to update
+        fields when the file is opened, which fills in its page numbers.
+        """
+        from .renderers.docx import DocxRenderer
+
+        return DocxRenderer(highlight=highlight).render(self)
+
+    def save_docx(self, path: Union[str, Path], highlight: bool = False) -> Path:
+        """Write the Word export to ``path`` and return it."""
+        path = Path(path)
+        path.write_bytes(self.to_docx(highlight=highlight))
+        return path
+
     def save_markdown(self, path: Union[str, Path], front_matter: bool = False) -> Path:
         """Write the Markdown export to ``path`` and return it.
 
@@ -269,9 +287,10 @@ class Report(Container):
     def save(self, path: Union[str, Path], **options: Any) -> Path:
         """Write the report in the format given by the file extension.
 
-        ``.md`` / ``.markdown``, ``.html`` / ``.htm``, ``.tex`` and ``.pdf``
-        call :meth:`save_markdown`, :meth:`save_html`, :meth:`save_latex` and
-        :meth:`save_pdf`; ``options`` are passed on to that method.
+        ``.md`` / ``.markdown``, ``.html`` / ``.htm``, ``.tex``, ``.pdf`` and
+        ``.docx`` call :meth:`save_markdown`, :meth:`save_html`,
+        :meth:`save_latex`, :meth:`save_pdf` and :meth:`save_docx`;
+        ``options`` are passed on to that method.
         """
         path = Path(path)
         method = _SAVERS.get(path.suffix.lower())
@@ -290,6 +309,7 @@ _SAVERS = {
     ".htm": "save_html",
     ".tex": "save_latex",
     ".pdf": "save_pdf",
+    ".docx": "save_docx",
 }
 
 

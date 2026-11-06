@@ -110,6 +110,7 @@ written = [
     report.save_markdown(OUT / "toc_report.md"),
     report.save_html(OUT / "toc_report.html"),
     report.save_latex(OUT / "toc_report.tex"),  # compile twice to fill in the TOC
+    report.save_docx(OUT / "toc_report.docx"),
 ]
 try:
     written.append(report.save_pdf(OUT / "toc_report.pdf"))

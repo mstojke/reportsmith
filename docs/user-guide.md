@@ -20,8 +20,9 @@ This guide walks through every feature. For a terse signature-level listing, see
 12. [Exporting](#exporting) — including [page headers, footers and numbers](#page-headers-footers-and-numbers)
 13. [Exporting to LaTeX](#exporting-to-latex)
 14. [Exporting to PDF](#exporting-to-pdf)
-15. [Customizing the HTML output](#customizing-the-html-output)
-16. [Escaping and safety](#escaping-and-safety)
+15. [Exporting to Word](#exporting-to-word)
+16. [Customizing the HTML output](#customizing-the-html-output)
+17. [Escaping and safety](#escaping-and-safety)
 
 ---
 
@@ -581,6 +582,8 @@ html_text     = report.to_html()
 report.save_markdown("report.md")     # writes UTF-8, returns the Path
 report.save_html("report.html")
 
+report.save_docx("report.docx")       # Word; no extra packages needed
+
 report.save("report.pdf")             # format from the extension
 report.save("report.html", full_document=False)   # options go to save_html()
 ```
@@ -609,7 +612,7 @@ Each is a string (centred) or a `(left, centre, right)` tuple. Placeholders: `{p
 
 `to_html()` / `save_html()` also take `theme=` and `highlight=` (see [Customizing the HTML output](#customizing-the-html-output) and [Syntax highlighting](#syntax-highlighting)); `to_markdown()` / `save_markdown()` take `front_matter=` (see [Metadata](#metadata)).
 
-`save(path, **options)` picks the format from the file extension — `.md` / `.markdown`, `.html` / `.htm`, `.tex`, `.pdf` (case-insensitive) — and passes any options to the matching `save_*` method. Other extensions raise `ValueError`.
+`save(path, **options)` picks the format from the file extension — `.md` / `.markdown`, `.html` / `.htm`, `.tex`, `.pdf`, `.docx` (case-insensitive) — and passes any options to the matching `save_*` method. Other extensions raise `ValueError`.
 
 Generated figure images are embedded in HTML; `save_markdown()` writes them into a `report_files/` folder next to the file (see [Figures](#figures)).
 
@@ -687,6 +690,30 @@ Details and limitations:
 - **Missing images** render as an `[Image: alt]` (or `[Figure: ...]`) placeholder instead of failing the export.
 - **`raw(...)` content is skipped** — Markdown/HTML/LaTeX passthrough has no meaning in PDF.
 - Without fpdf2 installed, `to_pdf()` raises `ImportError` with the install hint; the rest of the library is unaffected.
+
+## Exporting to Word
+
+```python
+report.save_docx("report.docx")          # or report.save("report.docx")
+data = report.to_docx(highlight=True)    # bytes; highlight needs the highlight extra
+```
+
+Word export needs no extra packages: reportsmith writes the `.docx` (Office Open XML) itself. The file opens in Microsoft Word, LibreOffice, Google Docs and Pages, and is meant to be edited further:
+
+- **Headings** use Word's built-in Heading 1–6 styles, so the navigation pane, outline view and Word's own tables of contents work. Every style (Normal, Title, Quote, Code, Caption, List Paragraph, ...) is a named style you can restyle in Word.
+- **Table of contents:** a real Word TOC field, prefilled with linked entries. The file asks Word to update fields when opened (Word shows a prompt), which adds the page numbers; LibreOffice and Google Docs show the entries as written.
+- **Footnotes** are real Word footnotes at the bottom of the page.
+- **Lists** are Word numbered and bulleted lists (each list restarts at 1); definition lists are a bold term with an indented definition, and task lists use ☑ / ☐.
+- **Tables** repeat their header row on every page and keep rows together; `widths`, `striped`, `footer` and cell colours carry over. Captions follow tables and figures ("Table 1: ...").
+- **Figures** are embedded pictures (PNG, JPEG, GIF; plots as PNG). An SVG figure, or a missing file, becomes a `[Figure: ...]` placeholder; a remote `image()` becomes a link.
+- **Cross-references** (`ref()`) and the TOC are internal links to bookmarks.
+- **Math:** inline math is Unicode text in Cambria Math ("α² ≤ π"); display equations are pictures typeset by matplotlib's mathtext when it is installed (else Unicode text), centred, with "(n)" at the right margin. They are not editable Word equations.
+- **Callouts** are one-cell tables with a coloured bar and a pale background.
+- **Headers and footers** use Word's PAGE and NUMPAGES fields; the first page gets the footer but not the header. A cover is its own section, centred on the page, with neither.
+- **Metadata** (title, author, description, keywords, language) goes into the document properties, and the language into the default text language (spelling and hyphenation).
+- **`raw(...)` content is skipped**, as in PDF.
+
+The page is A4 with 2 cm margins and the body font is Calibri 11 pt; restyle in Word (Design / Styles) or with python-docx afterwards.
 
 ## Customizing the HTML output
 

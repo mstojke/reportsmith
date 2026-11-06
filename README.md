@@ -4,9 +4,9 @@
 [![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/mstojke/reportsmith/badges/coverage.json)](https://github.com/mstojke/reportsmith/actions/workflows/tests.yml)
 [![Examples](https://img.shields.io/badge/examples-live-1d4ed8)](https://mstojke.github.io/reportsmith/)
 
-A small, dependency-free Python library for building reports programmatically and exporting them to **Markdown**, a **standalone styled HTML** document, **LaTeX**, or (optionally) **PDF**.
+A small, dependency-free Python library for building reports programmatically and exporting them to **Markdown**, a **standalone styled HTML** document, **LaTeX**, **Word** (`.docx`), or (optionally) **PDF**.
 
-**[See the examples →](https://mstojke.github.io/reportsmith/)** every example report, rendered in all four formats, with the script that made it.
+**[See the examples →](https://mstojke.github.io/reportsmith/)** every example report, rendered in all five formats, with the script that made it.
 
 ## Features
 
@@ -30,6 +30,7 @@ A small, dependency-free Python library for building reports programmatically an
 - Reusable content: build sections on their own and `add()` them anywhere, or `extend()` one report with another — heading levels adapt, and `label_prefix` keeps cross-references working
 - LaTeX export: a compilable document (pdfLaTeX/XeLaTeX/LuaLaTeX) with booktabs tables, framed code blocks, hyperlinks, and PDF bookmarks — or a body fragment to `\input` into your own document
 - Optional PDF export (`pip install reportsmith[pdf]`, via fpdf2): matching styling, PDF bookmarks from sections, clickable links, auto-detected Unicode system fonts
+- Word export with no extra packages: built-in heading styles, a Word table of contents, real footnotes, Word lists, tables with repeating headers, embedded figures, page-number fields in headers and footers
 - No required dependencies; Python 3.9+
 
 ## Installation
@@ -68,14 +69,15 @@ print(report.to_html())              # standalone HTML page
 report.save_markdown("report.md")
 report.save_html("report.html")
 report.save_latex("report.tex")    # compile with pdflatex/xelatex/lualatex
+report.save_docx("report.docx")    # Word, no extra packages
 report.save("report.pdf")          # any format, chosen by the file extension
 ```
 
-Run `python example.py` for a fuller demo that writes `example_report.md`, `example_report.html`, `example_report.tex`, and `example_report.pdf`.
+Run `python example.py` for a fuller demo that writes `example_report.md`, `example_report.html`, `example_report.tex`, `example_report.docx`, and `example_report.pdf`.
 
 ## Examples
 
-The **[examples site](https://mstojke.github.io/reportsmith/)** shows every example in one place — each report as HTML, PDF, Markdown and LaTeX, next to its source:
+The **[examples site](https://mstojke.github.io/reportsmith/)** shows every example in one place — each report as HTML, PDF, Word, Markdown and LaTeX, next to its source:
 
 | Example | Shows |
 | --- | --- |
@@ -150,13 +152,14 @@ Anywhere text is accepted you may pass a plain string or a list mixing strings w
 - `report.to_html(full_document=True, css=None, theme="auto", highlight=False, mathjax=True)` → HTML string; `full_document=False` returns just the body fragment, `css=` replaces the default stylesheet, `theme=` is `"auto"`, `"light"`, or `"dark"`, and `mathjax=` controls the MathJax script added when the report has math (a URL, or `False`)
 - `report.to_latex(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False)` → LaTeX source; `full_document=False` returns just the body, `preamble=` is appended to the built-in preamble
 - `report.to_pdf(fonts=None, mono_fonts=None, highlight=False)` → PDF bytes (requires the `pdf` extra); pass TTF path quadruples to control typefaces
-- `highlight=True` on the HTML, LaTeX, and PDF exports colours code blocks (requires the `highlight` extra)
-- `report.save_markdown(path)` / `report.save_html(path, ...)` / `report.save_latex(path, ...)` / `report.save_pdf(path, ...)` → write to a file, return the `Path`
-- `report.save(path, **options)` → the same, with the format chosen by the extension (`.md`, `.html`, `.tex`, `.pdf`)
+- `report.to_docx(highlight=False)` → Word document bytes; needs no extra packages
+- `highlight=True` on the HTML, LaTeX, PDF, and Word exports colours code blocks (requires the `highlight` extra)
+- `report.save_markdown(path)` / `report.save_html(path, ...)` / `report.save_latex(path, ...)` / `report.save_pdf(path, ...)` / `report.save_docx(path, ...)` → write to a file, return the `Path`
+- `report.save(path, **options)` → the same, with the format chosen by the extension (`.md`, `.html`, `.tex`, `.pdf`, `.docx`)
 
 ## Running tests
 
-Install the development dependencies (pytest, coverage, the optional fpdf2, pandas, matplotlib and Pygments integrations, pypdf for checking PDF output, ruff and mypy):
+Install the development dependencies (pytest, coverage, the optional fpdf2, pandas, matplotlib and Pygments integrations, pypdf and python-docx for checking PDF and Word output, ruff and mypy):
 
 ```bash
 pip install -e .[dev]
