@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from html import escape
+import os
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Union
 
 from ..elements import (
@@ -122,7 +125,7 @@ figcaption { margin-top: 0.4em; }
 table.striped tbody tr:nth-child(even) { background: var(--stripe); }
 tfoot td { font-weight: 600; border-top: 2px solid var(--muted); }
 td.cell-bold { font-weight: 600; }
-.equation { margin: 1em 0; overflow-x: auto; text-align: center; }
+.equation { margin: 1em 0; padding: 0.25em 0; overflow-x: auto; overflow-y: hidden; text-align: center; }
 .cover { display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 70vh; margin-bottom: 3rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border); }
 .cover-top { display: flex; flex-direction: column; align-items: center; gap: 1rem; width: 100%; }
 .cover-logo { max-height: 30vh; object-fit: contain; }
@@ -226,17 +229,67 @@ def page_css(report: "Report") -> str:
 MATHJAX_URL = "https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-chtml.js"
 
 
+#: MathJax's SVG build, embedded by ``to_html(mathjax="embed")``: it draws
+#: math as SVG paths, so it needs no web fonts and works offline.
+MATHJAX_SVG_URL = "https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"
+
+_MATHJAX_CONFIG = (
+    "window.MathJax = {tex: {inlineMath: [['\\\\(', '\\\\)']], "
+    "displayMath: [['\\\\[', '\\\\]']]}};"
+)
+
+
 def mathjax_tags(url: str = MATHJAX_URL) -> str:
     """``<script>`` tags that typeset the report's math with MathJax.
 
     Only ``\\(...\\)`` and ``\\[...\\]`` are read as math (not ``$``), so
     dollar signs in ordinary text are left alone.
     """
-    config = (
-        "window.MathJax = {tex: {inlineMath: [['\\\\(', '\\\\)']], "
-        "displayMath: [['\\\\[', '\\\\]']]}};"
-    )
-    return f"<script>{config}</script>\n<script defer src=\"{escape(url, quote=True)}\"></script>\n"
+    return f"<script>{_MATHJAX_CONFIG}</script>\n<script defer src=\"{escape(url, quote=True)}\"></script>\n"
+
+
+def mathjax_inline_tags(source: str) -> str:
+    """``<script>`` tags with a MathJax build's code embedded in the page,
+    so its math displays without a network connection."""
+    # "</script" would end the element early; "<\/" means the same in JavaScript.
+    code = source.replace("</script", "<\\/script").replace("</SCRIPT", "<\\/SCRIPT")
+    return f"<script>{_MATHJAX_CONFIG}</script>\n<script>{code}</script>\n"
+
+
+def cache_dir() -> Path:
+    """Where reportsmith caches downloads: ``$REPORTSMITH_CACHE``, else the
+    platform's cache folder (``%LOCALAPPDATA%``, ``~/Library/Caches``,
+    ``$XDG_CACHE_HOME`` or ``~/.cache``) + ``reportsmith``."""
+    if os.environ.get("REPORTSMITH_CACHE"):
+        return Path(os.environ["REPORTSMITH_CACHE"])
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Caches"
+    else:
+        base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    return base / "reportsmith"
+
+
+def fetch_mathjax(url: str = MATHJAX_SVG_URL) -> str:
+    """MathJax's code from ``url``, downloaded once and then read from the
+    cache (:func:`cache_dir`)."""
+    path = cache_dir() / ("mathjax-" + url.rstrip("/").split("/npm/")[-1].replace("/", "-").replace("@", "-"))
+    if path.is_file():
+        return path.read_text(encoding="utf-8")
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(url, timeout=60) as response:  # noqa: S310 (fixed https URL)
+            source = response.read().decode("utf-8")
+    except OSError as exc:
+        raise RuntimeError(
+            f"Couldn't download MathJax from {url} ({exc}). Pass a local copy instead: "
+            "to_html(mathjax=Path('tex-svg.js'))"
+        ) from exc
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(source, encoding="utf-8")
+    return source
 
 
 def has_math(report: "Report") -> bool:
@@ -288,8 +341,10 @@ class HtmlRenderer:
         css: Optional[str] = None,
         theme: str = "auto",
         highlight: bool = False,
-        mathjax: Union[bool, str] = True,
+        mathjax: Union[bool, str, Path] = True,
     ):
+        if isinstance(mathjax, str) and not mathjax.strip():
+            raise ValueError("mathjax must be True, False, a URL, 'embed' or a Path")
         self.full_document = full_document
         self.mathjax = mathjax
         self.css = theme_css(theme) if css is None else css
@@ -358,6 +413,10 @@ class HtmlRenderer:
     def _math_scripts(self, report: "Report") -> str:
         if not self.mathjax or not has_math(report):
             return ""
+        if isinstance(self.mathjax, Path):
+            return mathjax_inline_tags(self.mathjax.read_text(encoding="utf-8"))
+        if self.mathjax == "embed":
+            return mathjax_inline_tags(fetch_mathjax())
         return mathjax_tags(MATHJAX_URL if self.mathjax is True else str(self.mathjax))
 
     @staticmethod

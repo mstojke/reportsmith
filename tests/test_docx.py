@@ -10,7 +10,7 @@ from xml.dom import minidom
 import pytest
 
 from reportsmith import Cell, Cover, DocxRenderer, ListElement, Report, bold, code, footnote, italic, link, math, ref
-from reportsmith.renderers.docx import _order_rpr, image_size
+from reportsmith.renderers.docx import _order_rpr, image_size, placeholder_png, svg_size
 
 try:
     import docx as python_docx
@@ -151,7 +151,14 @@ class TestText:
         doc = body(lambda r: r.paragraph([strike("x"), sub("2"), sup("3"), math(r"\alpha^2")]))
         assert "<w:strike/>" in doc
         assert '<w:vertAlign w:val="subscript"/>' in doc and '<w:vertAlign w:val="superscript"/>' in doc
-        assert 'w:ascii="Cambria Math"' in doc and ">α²<" in doc
+        # Inline math is an editable Word equation.
+        assert "<m:oMath><m:sSup><m:e>" in doc and ">α<" in doc and "<m:oMathPara>" not in doc
+
+    def test_math_only_paragraph_stays_inline(self):
+        doc = body(lambda r: r.table(["Symbol"], [[[math(r"\lambda")]]]))
+        assert "</m:oMath><w:r><w:t xml:space=\"preserve\">\u200b</w:t></w:r>" in doc
+        doc = body(lambda r: r.paragraph(["Rate ", math(r"\lambda")]))
+        assert "\u200b" not in doc
 
     def test_breaks_tabs_and_escaping(self):
         doc = body(lambda r: r.paragraph("a <b> & c\nd\te"))
@@ -301,13 +308,45 @@ class TestFigures:
         cx = int(re.search(r'<wp:extent cx="(\d+)"', doc).group(1))
         assert cx == TEXT_W_EMU
 
-    def test_missing_and_svg_placeholders(self, tmp_path):
+    def test_missing_file_placeholder(self, tmp_path):
         r = Report("T", language="de")
         r.figure(tmp_path / "missing.png", alt="Plan")
-        r.figure(b'<svg xmlns="http://www.w3.org/2000/svg"></svg>', alt="Vector")
         doc = package(r).document
-        assert "[Abbildung: Plan]" in doc and "[Abbildung: Vector]" in doc
-        assert "<w:drawing>" not in doc
+        assert "[Abbildung: Plan]" in doc and "<w:drawing>" not in doc
+
+    def test_svg_with_png_fallback(self):
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"></svg>'
+        pkg = package(Report("T").figure(svg, alt="Vector"))
+        assert "word/media/image1.png" in pkg.names and "word/media/image2.svg" in pkg.names
+        assert pkg.zip.read("word/media/image2.svg") == svg
+        assert '<asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main"' in pkg.document
+        assert 'Extension="svg" ContentType="image/svg+xml"' in pkg["[Content_Types].xml"]
+        cx, cy = map(int, re.search(r'<wp:extent cx="(\d+)" cy="(\d+)"/>', pkg.document).groups())
+        assert cx == 200 * 9525 and cy == 100 * 9525  # 200 x 100 CSS px
+        assert image_size(pkg.zip.read("word/media/image1.png"), "png") == (200, 100)
+
+    def test_plot_embedded_as_svg_and_png(self):
+        plt = pytest.importorskip("matplotlib.pyplot")
+        fig, ax = plt.subplots(figsize=(2, 1))
+        ax.plot([1, 2], [1, 2])
+        pkg = package(Report("T").figure(fig))
+        plt.close(fig)
+        assert "word/media/image1.png" in pkg.names and "word/media/image2.svg" in pkg.names
+        assert pkg.zip.read("word/media/image1.png")[:4] == b"\x89PNG"
+        assert b"<svg" in pkg.zip.read("word/media/image2.svg")[:500]
+
+    @pytest.mark.parametrize("svg, size", [
+        (b'<svg xmlns="http://www.w3.org/2000/svg" width="2in" height="1in"/>', (192, 96)),
+        (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 10"/>', (40, 10)),
+        (b'<svg xmlns="http://www.w3.org/2000/svg" width="80" viewBox="0 0 40 10"/>', (80, 20)),
+        (b'<svg xmlns="http://www.w3.org/2000/svg" width="100%"/>', (300, 150)),
+        (b"not xml", (300, 150)),
+    ])
+    def test_svg_size(self, svg, size):
+        assert svg_size(svg) == pytest.approx(size)
+
+    def test_placeholder_png(self):
+        assert image_size(placeholder_png(400, 100), "png") == (200, 50)
 
     def test_remote_image_is_a_link(self):
         pkg = package(Report("T").image("https://example.com/a.png", alt="Remote"))
@@ -324,18 +363,23 @@ class TestFigures:
 
 
 class TestEquations:
-    def test_unicode_fallback(self, monkeypatch):
-        import reportsmith.renderers.docx as docx_module
+    def test_unnumbered_is_an_equation_paragraph(self):
+        doc = package(Report("T", footer=None).equation(r"\frac{a}{b}")).document
+        assert "<m:oMathPara><m:oMath><m:f><m:num>" in doc
+        assert ">(1)<" not in doc and "<w:drawing>" not in doc
 
-        monkeypatch.setattr(docx_module, "render_equation", lambda *a, **k: None)
-        doc = package(Report("T").equation("a^2 + b^2", label="e")).document
-        assert ">a² + b²<" in doc and ">(1)<" in doc
+    def test_numbered_sits_in_a_table(self):
+        doc = package(Report("T", footer=None).equation("x = 1", label="e")).document
+        assert re.search(r"<w:tbl>.*<m:oMathPara>.*>\(1\)<.*</w:tbl>", doc)
+        assert '<w:bookmarkStart w:id="1" w:name="_Ref000001"/><m:oMathPara>' in doc
 
-    def test_picture_when_matplotlib(self):
-        pytest.importorskip("matplotlib")
-        pkg = package(Report("T").equation(r"\frac{a}{b}"))
-        assert "<w:drawing>" in pkg.document and "word/media/image1.png" in pkg.names
-        assert ">(1)<" not in pkg.document  # unlabelled: not numbered
+    def test_well_formed_for_every_environment(self):
+        r = Report("T")
+        for tex in (r"\begin{pmatrix} a & b \\ c & d \end{pmatrix}",
+                    r"f = \begin{cases} 1 & x > 0 \\ 0 & \text{else} \end{cases}",
+                    r"\begin{aligned} a &= b \\ c &= d \end{aligned}"):
+            r.equation(tex)
+        minidom.parseString(package(r).document)
 
 
 class TestToc:
@@ -402,9 +446,32 @@ class TestPages:
         doc = package(r).document
         cover_sect = doc[:doc.index("</w:sectPr>")]
         assert '<w:vAlign w:val="center"/>' in cover_sect
-        assert "headerReference" not in cover_sect and ">Org<" in cover_sect and ">Conf<" in cover_sect
+        assert "headerReference" not in cover_sect and ">Org<" in cover_sect
         body_sect = doc[doc.rindex("<w:sectPr>"):]
         assert "<w:titlePg/>" not in body_sect and "headerReference" in body_sect
+
+    def test_cover_note_in_cover_footer(self):
+        r = Report("Title", cover=Cover(note="Confidential"))  # with the default page-number footer
+        pkg = package(r)
+        doc = pkg.document
+        assert ">Confidential<" not in doc
+        cover_sect = doc[:doc.index("</w:sectPr>")]
+        rid = re.search(r'<w:footerReference w:type="default" r:id="(rId\d+)"/>', cover_sect).group(1)
+        target = re.search(rf'Id="{rid}" Type="[^"]+" Target="([^"]+)"', pkg["word/_rels/document.xml.rels"]).group(1)
+        assert ">Confidential<" in pkg[f"word/{target}"]
+        body_sect = doc[doc.rindex("<w:sectPr>"):]
+        assert "footerReference" in body_sect
+
+    def test_body_gets_empty_footer_so_note_does_not_repeat(self):
+        pkg = package(Report("Title", footer=None, cover=Cover(note="Confidential")))
+        body_sect = pkg.document[pkg.document.rindex("<w:sectPr>"):]
+        rid = re.search(r'<w:footerReference w:type="default" r:id="(rId\d+)"/>', body_sect).group(1)
+        target = re.search(rf'Id="{rid}" Type="[^"]+" Target="([^"]+)"', pkg["word/_rels/document.xml.rels"]).group(1)
+        assert "Confidential" not in pkg[f"word/{target}"]
+
+    def test_cover_without_note_has_no_cover_footer(self):
+        doc = package(Report("Title", footer=None, cover=True)).document
+        assert "footerReference" not in doc
 
     def test_cover_logo(self):
         pkg = package(Report("T", cover=Cover(logo=tiny_png())))

@@ -17,7 +17,7 @@ A small, dependency-free Python library for building reports programmatically an
 - Elements: headings, paragraphs, tables (with alignment and captions), bullet/numbered lists (nestable), definition lists, task lists, page breaks, code blocks, block quotes, images, horizontal rules, and format-specific raw passthrough
 - Inline formatting helpers: `bold()`, `italic()`, `code()`, `link()`, `strike()`, `sub()`, `sup()`, `math()`, and numbered `footnote()`s — rendered natively in every format
 - Figures from image files, image bytes, or matplotlib plots, with numbered captions ("Figure 1", "Table 2") and `ref()` cross-references
-- Math in TeX: inline `math()` and numbered display `equation()`s, typeset in LaTeX, Markdown (`$...$`, rendered by GitHub), HTML (MathJax), and PDF (matplotlib's mathtext, with a Unicode fallback)
+- Math in TeX: inline `math()` and numbered display `equation()`s, including `aligned`, `cases` and matrices — typeset in LaTeX, Markdown (`$...$`, rendered by GitHub), HTML (MathJax, optionally embedded for offline viewing), Word (editable equations), and PDF (matplotlib's mathtext, with a Unicode fallback)
 - Optional section numbering ("1", "1.1") in every format, with `ref()` to sections
 - Running page headers and footers with page numbers ("Page 3 of 12") in PDF, LaTeX, and printed HTML
 - Cover pages with an optional logo, organization name, and confidentiality note (`Report(cover=Cover(...))`)
@@ -149,7 +149,7 @@ Anywhere text is accepted you may pass a plain string or a list mixing strings w
 ### Export
 
 - `report.to_markdown(front_matter=False)` → GitHub-flavored Markdown string; `front_matter=True` adds a YAML metadata block
-- `report.to_html(full_document=True, css=None, theme="auto", highlight=False, mathjax=True)` → HTML string; `full_document=False` returns just the body fragment, `css=` replaces the default stylesheet, `theme=` is `"auto"`, `"light"`, or `"dark"`, and `mathjax=` controls the MathJax script added when the report has math (a URL, or `False`)
+- `report.to_html(full_document=True, css=None, theme="auto", highlight=False, mathjax=True)` → HTML string; `full_document=False` returns just the body fragment, `css=` replaces the default stylesheet, `theme=` is `"auto"`, `"light"`, or `"dark"`, and `mathjax=` controls the MathJax script added when the report has math (a URL, `"embed"` to embed MathJax for offline viewing, or `False`)
 - `report.to_latex(full_document=True, document_class="article", class_options="11pt,a4paper", preamble="", numbered=False)` → LaTeX source; `full_document=False` returns just the body, `preamble=` is appended to the built-in preamble
 - `report.to_pdf(fonts=None, mono_fonts=None, highlight=False)` → PDF bytes (requires the `pdf` extra); pass TTF path quadruples to control typefaces
 - `report.to_docx(highlight=False)` → Word document bytes; needs no extra packages

@@ -122,7 +122,7 @@ class Report(Container):
         css: Optional[str] = None,
         theme: str = "auto",
         highlight: bool = False,
-        mathjax: Union[bool, str] = True,
+        mathjax: Union[bool, str, Path] = True,
     ) -> str:
         """Render the report as HTML.
 
@@ -133,7 +133,10 @@ class Report(Container):
         colours code blocks with Pygments (``pip install
         reportsmith[highlight]``). A full document with math loads MathJax
         from a CDN to typeset it: ``mathjax`` may be a URL of another
-        MathJax build (e.g. self-hosted), or ``False`` to leave it out.
+        MathJax build (e.g. self-hosted), or ``False`` to leave it out. For
+        a page that shows math offline, ``mathjax="embed"`` embeds MathJax's
+        SVG build in the page (downloaded once, then cached; about 2 MB), and
+        a ``Path`` embeds a local copy of a MathJax build.
         """
         from .renderers.html import HtmlRenderer
 
@@ -230,7 +233,7 @@ class Report(Container):
         css: Optional[str] = None,
         theme: str = "auto",
         highlight: bool = False,
-        mathjax: Union[bool, str] = True,
+        mathjax: Union[bool, str, Path] = True,
     ) -> Path:
         """Write the HTML export to ``path`` and return it."""
         path = Path(path)

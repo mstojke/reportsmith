@@ -46,7 +46,7 @@ from .renderers.pdf import PdfRenderer
 from .renderers.latex import LatexRenderer
 from .renderers.docx import DocxRenderer
 
-__version__ = "0.8"
+__version__ = "0.9.0"
 
 __all__ = [
     "Report",

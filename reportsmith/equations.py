@@ -244,24 +244,275 @@ def render_equation(tex: str, size: float = 12, dpi: int = 300) -> Optional[tupl
     """Typeset a display equation with matplotlib's mathtext.
 
     Returns ``(png_bytes, width_pt, height_pt)``, or ``None`` when matplotlib
-    isn't installed or mathtext can't parse the TeX (it supports a large
-    subset of TeX math, but not environments such as ``align``).
+    isn't installed or mathtext can't parse the TeX. mathtext sets one line
+    of math; multi-line environments (``aligned``, ``cases``, ``matrix``,
+    ``pmatrix``, ``array``, ``gathered``, ...) and ``\\\\`` line breaks are
+    set cell by cell and assembled into a grid, with delimiters drawn to
+    its height.
     """
     try:
-        from matplotlib import rc_context
-        from matplotlib.font_manager import FontProperties
-        from matplotlib.mathtext import math_to_image
+        import matplotlib  # noqa: F401
+        from PIL import Image  # noqa: F401 (matplotlib depends on Pillow)
     except ImportError:
         return None
-    source = " ".join(tex.split())  # mathtext needs one line
+    try:
+        image = _layout(tex, size, dpi)
+    except _Unsupported:
+        return None
+    if image is None:
+        return None
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue(), image.width * 72 / dpi, image.height * 72 / dpi
+
+
+class _Unsupported(Exception):
+    """TeX that mathtext can't set."""
+
+
+_BEGIN = re.compile(r"\\begin\{([A-Za-z]+\*?)\}")
+_LEFT_BEFORE = re.compile(r"\\left\s*(\\[A-Za-z]+|\\.|.)\s*$")
+_RIGHT_AFTER = re.compile(r"\s*\\right\s*(\\[A-Za-z]+|\\.|.)")  # used with match(text, pos)
+_DELIMITERS = {"(": "(", ")": ")", "[": "[", "]": "]", "|": "|", "\\|": "‖", "\\{": "{", "\\}": "}",
+               "\\lbrace": "{", "\\rbrace": "}", "\\langle": "⟨", "\\rangle": "⟩", "\\vert": "|",
+               "\\Vert": "‖", "\\lvert": "|", "\\rvert": "|", ".": ""}
+_ENV_DELIMITERS = {"pmatrix": ("(", ")"), "bmatrix": ("[", "]"), "Bmatrix": ("{", "}"),
+                   "vmatrix": ("|", "|"), "Vmatrix": ("‖", "‖"), "cases": ("{", ""), "dcases": ("{", "")}
+
+
+def _split_top(text: str, separator: str) -> list[str]:
+    """Split on a separator (``&`` or ``\\\\``) outside braces and nested
+    environments."""
+    parts, depth, env, start, i = [], 0, 0, 0, 0
+    while i < len(text):
+        if text.startswith("\\begin{", i):
+            env += 1
+        elif text.startswith("\\end{", i):
+            env -= 1
+        c = text[i]
+        if c == "\\" and i + 1 < len(text) and text[i + 1] in "{}&" and separator != "\\\\":
+            i += 2
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        elif depth == 0 and env == 0 and text.startswith(separator, i):
+            if separator == "&" and i > 0 and text[i - 1] == "\\":
+                i += 1
+                continue
+            parts.append(text[start:i])
+            i += len(separator)
+            start = i
+            continue
+        i += 1 if c != "\\" else 2
+    parts.append(text[start:])
+    return parts
+
+
+def _segments(tex: str) -> list[tuple]:
+    """Top-level pieces: ``("tex", source)`` and ``("env", name, spec, body,
+    left, right)`` for each environment (with any ``\\left``/``\\right``
+    delimiters around it)."""
+    out: list[tuple] = []
+    pos = 0
+    while (match := _BEGIN.search(tex, pos)) is not None:
+        name = match.group(1)
+        # Find the matching \end{name}, allowing nested environments.
+        depth, i = 1, match.end()
+        while depth:
+            nxt_begin = tex.find("\\begin{", i)
+            nxt_end = tex.find("\\end{", i)
+            if nxt_end < 0:
+                raise _Unsupported(name)
+            if 0 <= nxt_begin < nxt_end:
+                depth, i = depth + 1, nxt_begin + 7
+            else:
+                depth, i = depth - 1, nxt_end + 5
+        end_close = tex.index("}", i)
+        body_end = i - 5
+        body = tex[match.end():body_end]
+        spec = ""
+        if name in ("array", "alignedat") and body.startswith("{"):
+            close = body.index("}")
+            spec, body = body[1:close], body[close + 1:]
+        before = tex[pos:match.start()]
+        left = right = None
+        lm = _LEFT_BEFORE.search(before)
+        if lm:
+            left, before = _DELIMITERS.get(lm.group(1), lm.group(1)), before[:lm.start()]
+        after_start = end_close + 1
+        rm = _RIGHT_AFTER.match(tex, after_start) if left is not None else None
+        if rm:
+            right, after_start = _DELIMITERS.get(rm.group(1), rm.group(1)), rm.end()
+        if before.strip():
+            out.append(("tex", before))
+        out.append(("env", name.rstrip("*"), spec, body, left, right))
+        pos = after_start
+    if tex[pos:].strip():
+        out.append(("tex", tex[pos:]))
+    return out
+
+
+_MATHTEXT_NAMES = {"le": "leq", "ge": "geq", "gets": "leftarrow", "implies": "Rightarrow",
+                   "iff": "Leftrightarrow", "land": "wedge", "lor": "vee", "lnot": "neg", "tfrac": "frac",
+                   "lvert": "vert", "rvert": "vert"}
+_MATHTEXT_ALIASES = re.compile(r"\\(" + "|".join(_MATHTEXT_NAMES) + r")(?![A-Za-z])")
+
+
+def _mathtext(source: str, size: float, dpi: int):
+    """One line of math as a Pillow RGBA image (None for empty source)."""
+    from matplotlib import rc_context
+    from matplotlib.font_manager import FontProperties
+    from matplotlib.mathtext import math_to_image
+    from PIL import Image
+
+    source = " ".join(source.split())
+    if not source:
+        return None
+    # TeX spellings mathtext doesn't know, as ones it does.
+    source = _MATHTEXT_ALIASES.sub(lambda m: "\\" + _MATHTEXT_NAMES[m.group(1)], source)
     # Display style: full-size fractions, as in a TeX display equation.
     source = re.sub(r"\\frac(?![A-Za-z])", r"\\dfrac", source)
     buffer = io.BytesIO()
     try:
         with rc_context({"mathtext.fontset": "cm"}):
             math_to_image(f"${source}$", buffer, prop=FontProperties(size=size), dpi=dpi, format="png")
-    except Exception:  # mathtext raises ValueError (and others) on TeX it can't parse
+    except Exception as exc:  # mathtext raises ValueError (and others) on TeX it can't parse
+        raise _Unsupported(source) from exc
+    buffer.seek(0)
+    return Image.open(buffer).convert("RGBA")
+
+
+def _layout(tex: str, size: float, dpi: int):
+    """The whole equation as one image: segments side by side, centred."""
+    segments = _segments(tex)
+    if len(segments) == 1 and segments[0][0] == "tex" and "\\\\" in tex:
+        segments = [("env", "gathered", "", tex, None, None)]  # bare line breaks
+    images = []
+    for segment in segments:
+        if segment[0] == "tex":
+            image = _mathtext(segment[1], size, dpi)
+        else:
+            _, name, spec, body, left, right = segment
+            image = _environment(name, spec, body, left, right, size=size, dpi=dpi)
+        if image is not None:
+            images.append(image)
+    return _row(images, gap=round(size * dpi / 72 * 0.15))
+
+
+def _row(images: list, gap: int = 0):
+    from PIL import Image
+
+    if not images:
         return None
-    data = buffer.getvalue()
-    width_px, height_px = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
-    return data, width_px * 72 / dpi, height_px * 72 / dpi
+    width = sum(i.width for i in images) + gap * (len(images) - 1)
+    height = max(i.height for i in images)
+    canvas = Image.new("RGBA", (width, height), (255, 255, 255, 0))
+    x = 0
+    for image in images:
+        canvas.alpha_composite(image, (x, (height - image.height) // 2))
+        x += image.width + gap
+    return canvas
+
+
+def _environment(name: str, spec: str, body: str, left: Optional[str], right: Optional[str],
+                 size: float, dpi: int):
+    from PIL import Image
+
+    em = size * dpi / 72
+    rows = _split_top(body, "\\\\")
+    if len(rows) > 1 and not rows[-1].strip():
+        rows.pop()  # a trailing \\
+    cells = [_split_top(row, "&") for row in rows]
+    columns = max(len(r) for r in cells)
+    if name in ("aligned", "align", "split", "alignedat", "flalign", "eqnarray"):
+        aligns = ["right" if c % 2 == 0 else "left" for c in range(columns)]
+        gaps = [0 if c % 2 == 0 else round(1.5 * em) for c in range(columns)]
+        # "{}" gives a leading relation ("= b") its space on both sides, as in TeX.
+        cells = [[("{}" + cell if c % 2 else cell) for c, cell in enumerate(row)] for row in cells]
+    elif name in ("cases", "dcases"):
+        aligns, gaps = ["left"] * columns, [round(1.0 * em)] * columns
+    elif name == "array":
+        aligns = [{"l": "left", "c": "center", "r": "right"}[c] for c in spec if c in "lcr"]
+        aligns += ["center"] * (columns - len(aligns))
+        gaps = [round(0.8 * em)] * columns
+    elif name.endswith("matrix"):
+        aligns, gaps = ["center"] * columns, [round(0.8 * em)] * columns
+    else:  # gathered, gather, multline, ...: centred lines
+        aligns, gaps = ["center"] * columns, [round(0.8 * em)] * columns
+    rendered = [[_mathtext(cell, size, dpi) for cell in row] for row in cells]
+    widths = [max((r[c].width for r in rendered if c < len(r) and r[c] is not None), default=0)
+              for c in range(columns)]
+    heights = [max((i.height for i in row if i is not None), default=round(em)) for row in rendered]
+    row_gap = round(0.35 * em)
+    grid_w = sum(widths) + sum(gaps[:columns - 1])
+    grid_h = sum(heights) + row_gap * (len(heights) - 1)
+    grid = Image.new("RGBA", (max(grid_w, 1), max(grid_h, 1)), (255, 255, 255, 0))
+    y = 0
+    for row, height in zip(rendered, heights):
+        x = 0
+        for c in range(columns):
+            image = row[c] if c < len(row) else None
+            if image is not None:
+                offset = {"left": 0, "center": (widths[c] - image.width) // 2,
+                          "right": widths[c] - image.width}[aligns[c]]
+                grid.alpha_composite(image, (x + offset, y + (height - image.height) // 2))
+            x += widths[c] + (gaps[c] if c < columns - 1 else 0)
+        y += height + row_gap
+    opening, closing = _ENV_DELIMITERS.get(name, ("", ""))
+    if left is not None:
+        opening = left
+    if right is not None:
+        closing = right
+    return _delimit(grid, opening, closing, em, size, dpi)
+
+
+def _delimit(grid, opening: str, closing: str, em: float, size: float, dpi: int):
+    """Draw delimiters (``( [ { | ‖ ⟨``) to the grid's full height."""
+    from PIL import Image, ImageDraw
+
+    if not opening and not closing:
+        return grid
+    pad = round(0.15 * em)
+    height = grid.height + 2 * pad
+    width_d = round(0.45 * em)
+    line = max(1, round(0.06 * em))
+    left_w = width_d if opening else 0
+    right_w = width_d if closing else 0
+    canvas = Image.new("RGBA", (grid.width + left_w + right_w, height), (255, 255, 255, 0))
+    canvas.alpha_composite(grid, (left_w, pad))
+    draw = ImageDraw.Draw(canvas)
+    ink = (0, 0, 0, 255)
+
+    def draw_delimiter(char: str, x0: int, mirror: bool) -> None:
+        x1 = x0 + width_d
+        # "outer" is the side away from the content; "inner" faces it.
+        outer, inner = (x0 + line, x1 - line) if not mirror else (x1 - line, x0 + line)
+        if char in ("(", ")"):
+            span = 2 * abs(inner - outer)  # the ellipse whose side is the bracket
+            box = [outer, 0, outer + span, height - 1] if not mirror else [outer - span, 0, outer, height - 1]
+            start, end = (115, 245) if not mirror else (-65, 65)
+            draw.arc(box, start, end, fill=ink, width=line)
+        elif char in ("[", "]"):
+            draw.line([(inner, 0), (outer, 0), (outer, height - 1), (inner, height - 1)], fill=ink, width=line)
+        elif char == "|":
+            mid = (x0 + x1) // 2
+            draw.line([(mid, 0), (mid, height - 1)], fill=ink, width=line)
+        elif char == "‖":
+            mid = (x0 + x1) // 2
+            for dx in (-line * 2, line * 2):
+                draw.line([(mid + dx, 0), (mid + dx, height - 1)], fill=ink, width=line)
+        elif char in ("⟨", "⟩"):
+            draw.line([(inner, 0), (outer, height // 2), (inner, height - 1)], fill=ink, width=line)
+        elif char in ("{", "}"):
+            glyph = _mathtext(r"\{" if char == "{" else r"\}", size, dpi)
+            if glyph is not None:
+                glyph = glyph.resize((max(1, x1 - x0 - line), height))
+                canvas.alpha_composite(glyph, (x0, 0))
+
+    if opening:
+        draw_delimiter(opening, 0, mirror=False)
+    if closing:
+        draw_delimiter(closing, canvas.width - width_d, mirror=True)
+    return canvas

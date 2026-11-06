@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-06
+
 ### Added
 
 - Word export: `to_docx()`, `save_docx()`, and `.docx` in `save()`, with no
@@ -20,8 +22,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   headers/footers with PAGE / NUMPAGES fields carry over. `highlight=True`
   colours code blocks. `DocxRenderer` is exported.
 - Every example writes a `.docx` too, and the examples site links it.
+- Editable Word equations: math in Word output is native Office Math,
+  converted from the TeX by the new `reportsmith.omml.tex_to_omml` —
+  fractions, roots, scripts, big operators with limits, delimiters,
+  accents, functions, text, font commands, and the `matrix` / `pmatrix` /
+  `bmatrix` / `vmatrix` / `cases` / `aligned` / `gathered` / `array`
+  environments. Numbered equations keep "(n)" at the right margin.
+- SVG in Word: SVG figures are embedded as SVG and plots as SVG plus a PNG
+  copy, so Word 2016 and later show vector images.
+- Multi-line math in PDF: `aligned`, `cases`, matrices, `array`,
+  `gathered` and `\\` line breaks are typeset cell by cell with
+  matplotlib's mathtext and assembled, with delimiters drawn to height,
+  also inside larger expressions. TeX spellings mathtext lacks (`\le`,
+  `\ge`, `\implies`, `\iff`, `\tfrac`, ...) now work too.
+- Offline HTML math: `to_html(mathjax="embed")` embeds MathJax's SVG build
+  in the page (downloaded once and cached), and `mathjax=Path(...)` embeds
+  a local MathJax build, so math displays without a network connection.
+- The math example adds a multi-line `cases` equation.
 
-## [0.8] - 2026-11-05
+### Changed
+
+- The Word cover's note sits in the cover page's own footer, at the foot
+  of the page, as in the PDF.
+
+## [0.8.0] - 2026-11-05
 
 ### Added
 

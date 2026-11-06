@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import io
 import re
+import struct
 import zipfile
+import zlib
 from typing import TYPE_CHECKING, Optional, Sequence
 from xml.sax.saxutils import escape as _xml_escape
 
@@ -38,7 +40,7 @@ from ..elements import (
     TableOfContents,
     TaskList,
 )
-from ..equations import render_equation, tex_to_unicode
+from ..omml import M_NS, tex_to_omml
 from ..highlight import pdf_tokens, require_pygments
 from ..inline import Inline, InlineContent
 from ..labels import callout_title, labels_for, toc_title
@@ -72,14 +74,14 @@ _CALLOUT_COLORS = {
 _TASK_MARKS = {True: "☑", False: "☐"}  # ☑ ☐
 _BODY_FONT = "Calibri"
 _MONO_FONT = "Consolas"
-_MATH_FONT = "Cambria Math"
 
 _NS = (
     'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
     'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
     'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
     'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
-    'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"'
+    'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" '
+    f'xmlns:m="{M_NS}"'
 )
 _XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
 _REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -118,6 +120,58 @@ def image_size(data: bytes, fmt: str) -> Optional[tuple[int, int]]:
     except (IndexError, ValueError):
         return None
     return None
+
+
+_SVG_LENGTH = re.compile(r"^\s*([0-9.]+)\s*(px|pt|pc|mm|cm|in|em|ex|%)?\s*$")
+_SVG_UNITS = {"": 1.0, "px": 1.0, "pt": 96 / 72, "pc": 16.0, "mm": 96 / 25.4, "cm": 96 / 2.54, "in": 96.0,
+              "em": 16.0, "ex": 8.0}
+
+
+def svg_size(data: bytes) -> tuple[float, float]:
+    """An SVG's intrinsic size in CSS pixels, from its ``width``/``height``
+    (or ``viewBox``); 300 x 150, the browser default, when it has neither."""
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        return 300.0, 150.0
+
+    def length(value: str | None) -> float | None:
+        match = _SVG_LENGTH.match(value or "")
+        if not match or match.group(2) == "%":
+            return None
+        return float(match.group(1)) * _SVG_UNITS[match.group(2) or ""]
+
+    width, height = length(root.get("width")), length(root.get("height"))
+    box = (root.get("viewBox") or "").replace(",", " ").split()
+    if len(box) == 4:
+        box_w, box_h = float(box[2]), float(box[3])
+        if box_w > 0 and box_h > 0:
+            if width is None and height is None:
+                width, height = box_w, box_h
+            elif width is None and height is not None:
+                width = height * box_w / box_h
+            elif height is None and width is not None:
+                height = width * box_h / box_w
+    if not width or not height:
+        return 300.0, 150.0
+    return width, height
+
+
+def placeholder_png(width: float, height: float) -> bytes:
+    """A plain light-grey PNG with the given aspect ratio: the fallback
+    picture Word requires next to an SVG (shown only by readers without SVG
+    support)."""
+    scale = 200 / max(width, height)
+    w, h = max(1, round(width * scale)), max(1, round(height * scale))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    raw = b"".join(b"\x00" + b"\xf3\xf4\xf6" * w for _ in range(h))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
 class DocxRenderer:
@@ -234,6 +288,7 @@ class DocxRenderer:
             '<Default Extension="png" ContentType="image/png"/>'
             '<Default Extension="jpeg" ContentType="image/jpeg"/>'
             '<Default Extension="gif" ContentType="image/gif"/>'
+            '<Default Extension="svg" ContentType="image/svg+xml"/>'
             f"{parts}"
             '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
             '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
@@ -424,10 +479,12 @@ class DocxRenderer:
     def _band_rpr() -> str:
         return f'<w:color w:val="{_MUTED}"/><w:sz w:val="17"/>'
 
-    def _band_part(self, kind: str, band) -> str:
-        """Add a header/footer part; returns its relationship id."""
+    def _band_part(self, kind: str, band, content: str = "") -> str:
+        """Add a header/footer part (from a band, or ready-made paragraph
+        ``content``); returns its relationship id."""
         tag = "hdr" if kind == "header" else "ftr"
-        content = self._band_paragraph(band) if band is not None else "<w:p/>"
+        if not content:
+            content = self._band_paragraph(band) if band is not None else "<w:p/>"
         name = f"{kind}{len(self._header_footer_parts) + 1}.xml"
         self._header_footer_parts.append((name, f"{_XML_HEAD}<w:{tag} {_NS}>{content}</w:{tag}>"))
         return self._rel(f"{_REL}/{kind}", name)
@@ -449,6 +506,9 @@ class DocxRenderer:
             refs.append(f'<w:headerReference w:type="default" r:id="{self._band_part("header", report.header)}"/>')
         if report.footer is not None:
             refs.append(f'<w:footerReference w:type="default" r:id="{self._band_part("footer", report.footer)}"/>')
+        elif report.cover is not None and report.cover.note:
+            # Without its own footer, the body would inherit the cover's note.
+            refs.append(f'<w:footerReference w:type="default" r:id="{self._band_part("footer", None)}"/>')
         first_page = report.header is not None and report.cover is None
         if first_page:
             refs.append(f'<w:headerReference w:type="first" r:id="{self._band_part("header", None)}"/>')
@@ -511,11 +571,14 @@ class DocxRenderer:
                     runs.append(self._run_xml("<w:br/>", '<w:sz w:val="24"/>'))
                 runs.append(self._run(value, '<w:sz w:val="24"/>'))
             out.append(self._para("".join(runs), ppr=center))
+        refs = ""
         if cover.note:
-            out.append(self._para(self._run(cover.note, f'<w:color w:val="{_MUTED}"/><w:sz w:val="18"/>'),
-                                  ppr='<w:spacing w:before="1600"/>' + center))
+            # The note goes in the cover section's footer: the foot of the page.
+            note = self._para(self._run(cover.note, f'<w:color w:val="{_MUTED}"/><w:sz w:val="18"/>'),
+                              ppr='<w:spacing w:after="0"/>' + center)
+            refs = f'<w:footerReference w:type="default" r:id="{self._band_part("footer", None, note)}"/>'
         # The section break ends the cover's section: next page, vertically centred.
-        sect = self._sect_pr(extra='<w:vAlign w:val="center"/>')
+        sect = self._sect_pr(refs, extra='<w:vAlign w:val="center"/>')
         out.append(f"<w:p><w:pPr>{sect}</w:pPr></w:p>")
         return "".join(out)
 
@@ -687,11 +750,18 @@ class DocxRenderer:
 
     def _figure_run(self, el: Figure) -> str:
         """An inline picture run for a figure, or placeholder text when the
-        image can't be embedded (missing file, SVG)."""
+        image can't be embedded (missing or unreadable file). SVG figures
+        and plots are embedded as SVG, which Word shows, with a PNG next to
+        them for readers without SVG support."""
         try:
             data, fmt = el.image_data("png")
         except OSError:
             data, fmt = b"", ""
+        if fmt == "svg":
+            width, height = svg_size(data)
+            cx = round(TEXT_W_EMU * el.width) if el.width else min(round(width * 9525), TEXT_W_EMU)
+            cy = round(cx * height / width)
+            return self._drawing(placeholder_png(width, height), "png", cx, cy, el.alt, svg=data)
         size = image_size(data, fmt) if fmt in ("png", "jpeg", "gif") else None
         if size is None or not all(size):
             name = self._labels["figure"]
@@ -704,21 +774,40 @@ class DocxRenderer:
         else:
             cx = min(round(size[0] * 914400 / dpi), TEXT_W_EMU)
         cy = round(cx * size[1] / size[0])
-        return self._drawing(data, fmt, cx, cy, el.alt)
+        svg = None
+        if el.kind == "plot":
+            try:
+                svg = el.image_data("svg")[0]  # vector in Word; the PNG is its fallback
+            except Exception:  # a plot object that can't save SVG keeps just the PNG
+                svg = None
+        return self._drawing(data, fmt, cx, cy, el.alt, svg=svg)
 
-    def _drawing(self, data: bytes, fmt: str, cx: int, cy: int, alt: str = "") -> str:
+    def _drawing(self, data: bytes, fmt: str, cx: int, cy: int, alt: str = "",
+                 svg: Optional[bytes] = None) -> str:
+        """An inline picture. With ``svg``, Word (2016 and later) shows the
+        SVG and other readers the bitmap ``data``."""
         self._drawing_id += 1
         n = self._drawing_id
         name = f"image{len(self._media) + 1}.{fmt}"
         self._media.append((name, data))
         rid = self._rel(f"{_REL}/image", f"media/{name}")
+        ext = ""
+        if svg is not None:
+            svg_name = f"image{len(self._media) + 1}.svg"
+            self._media.append((svg_name, svg))
+            svg_rid = self._rel(f"{_REL}/image", f"media/{svg_name}")
+            ext = (
+                '<a:extLst><a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">'
+                '<asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" '
+                f'r:embed="{svg_rid}"/></a:ext></a:extLst>'
+            )
         return (
             '<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">'
             f'<wp:extent cx="{cx}" cy="{cy}"/>'
             f'<wp:docPr id="{n}" name="Picture {n}" descr="{_esc(alt, True)}"/>'
             '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
             f'<pic:pic><pic:nvPicPr><pic:cNvPr id="{n}" name="{name}"/><pic:cNvPicPr/></pic:nvPicPr>'
-            f'<pic:blipFill><a:blip r:embed="{rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>'
+            f'<pic:blipFill><a:blip r:embed="{rid}">{ext}</a:blip><a:stretch><a:fillRect/></a:stretch></pic:blipFill>'
             f'<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'
             '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>'
             "</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>"
@@ -742,28 +831,37 @@ class DocxRenderer:
         return out
 
     def _equation(self, el: Equation) -> str:
-        """A display equation, centred, with "(n)" at the right margin when
-        numbered: a picture typeset by matplotlib's mathtext when it can be,
-        else Unicode text."""
+        """A display equation as an editable Word equation. A numbered one
+        sits in a borderless three-column table, centred, with "(n)" at the
+        right margin, so Word keeps it in display style."""
         number = self._numbering.equation_number(el)
-        rendered = render_equation(el.tex, size=12)
-        if rendered is not None:
-            data, width_pt, height_pt = rendered
-            cx, cy = round(width_pt * 12700), round(height_pt * 12700)
-            if cx > TEXT_W_EMU * 0.8:
-                cx, cy = round(TEXT_W_EMU * 0.8), round(cy * TEXT_W_EMU * 0.8 / cx)
-            content = self._drawing(data, "png", cx, cy, el.tex)
-        else:
-            content = self._run(tex_to_unicode(el.tex), self._math_rpr())
-        tab = self._run_xml("<w:tab/>")
-        runs = tab + content + (tab + self._run(f"({number})") if number else "")
+        math = f"<m:oMathPara>{tex_to_omml(el.tex)}</m:oMathPara>"
         if el.label:
-            runs = self._bookmarked(runs, [self._label_marks[el.label]])
-        tabs = (
-            f'<w:tabs><w:tab w:val="center" w:pos="{TEXT_W // 2}"/>'
-            f'<w:tab w:val="right" w:pos="{TEXT_W}"/></w:tabs>'
+            math = self._bookmarked(math, [self._label_marks[el.label]])
+        spacing = '<w:spacing w:before="120" w:after="200"/>'
+        if not number:
+            return self._para(math, ppr=spacing)
+        side, middle = TEXT_W // 10, TEXT_W - 2 * (TEXT_W // 10)
+        none = 'w:val="nil"'
+        tbl_pr = (
+            '<w:tblPr><w:tblW w:w="5000" w:type="pct"/>'
+            f"<w:tblBorders><w:top {none}/><w:left {none}/><w:bottom {none}/><w:right {none}/>"
+            f"<w:insideH {none}/><w:insideV {none}/></w:tblBorders>"
+            '<w:tblLayout w:type="fixed"/></w:tblPr>'
         )
-        return self._para(runs, ppr=tabs + '<w:spacing w:before="120" w:after="200"/>')
+
+        def cell(width: int, content: str) -> str:
+            return (f'<w:tc><w:tcPr><w:tcW w:w="{width}" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>'
+                    f"{content}</w:tc>")
+
+        row = (
+            cell(side, "<w:p/>")
+            + cell(middle, self._para(math, ppr=spacing))
+            + cell(side, self._para(self._run(f"({number})"), ppr='<w:spacing w:after="0"/><w:jc w:val="right"/>'))
+        )
+        grid = f'<w:gridCol w:w="{side}"/><w:gridCol w:w="{middle}"/><w:gridCol w:w="{side}"/>'
+        return (f"<w:tbl>{tbl_pr}<w:tblGrid>{grid}</w:tblGrid><w:tr>{row}</w:tr></w:tbl>"
+                + self._para("", ppr='<w:spacing w:after="0"/>'))
 
     def _toc(self, el: TableOfContents) -> str:
         """Word's TOC field, filled with linked entries so it reads well
@@ -818,6 +916,17 @@ class DocxRenderer:
     # -- inline -------------------------------------------------------------
 
     def _inline(self, parts: list[InlineContent], base_rpr: str = "") -> str:
+        out = self._inline_runs(parts, base_rpr)
+        # Word shows a paragraph holding nothing but math as a centred display
+        # equation; an invisible character keeps such math inline.
+        if parts and all(
+            (isinstance(p, Inline) and p.style == "math") or (isinstance(p, str) and not p.strip())
+            for p in parts
+        ):
+            out += self._run("\u200b")
+        return out
+
+    def _inline_runs(self, parts: list[InlineContent], base_rpr: str) -> str:
         out = []
         for part in parts:
             if not isinstance(part, Inline):
@@ -842,7 +951,7 @@ class DocxRenderer:
                 align = "subscript" if style == "sub" else "superscript"
                 out.append(self._run(part.text, base_rpr + f'<w:vertAlign w:val="{align}"/>'))
             elif style == "math":
-                out.append(self._run(tex_to_unicode(part.text), self._math_rpr() + base_rpr))
+                out.append(tex_to_omml(part.text))  # an editable inline equation
             elif style == "ref":
                 shown = self._numbering.ref_text(part.href, part.text)
                 run = self._run(shown, '<w:rStyle w:val="Hyperlink"/>' + base_rpr)
@@ -856,10 +965,6 @@ class DocxRenderer:
             else:
                 out.append(self._run(part.text, base_rpr))
         return "".join(out)
-
-    @staticmethod
-    def _math_rpr() -> str:
-        return f'<w:rFonts w:ascii="{_MATH_FONT}" w:hAnsi="{_MATH_FONT}" w:cs="{_MATH_FONT}"/>'
 
     def _hyperlink(self, runs: str, href: str = "", anchor: str = "") -> str:
         if anchor:
