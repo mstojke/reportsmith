@@ -47,7 +47,7 @@ with report.section("Glossary") as s:
     s.definition_list({"RC": "Release candidate", "GA": "General availability"})
 
 # save() picks the format from each file's extension.
-for name in ("lists_report.md", "lists_report.html", "lists_report.tex", "lists_report.pdf"):
+for name in ("lists_report.md", "lists_report.html", "lists_report.tex", "lists_report.pdf", "lists_report.docx"):
     try:
         print(f"Wrote {report.save(OUT / name)}")
     except ImportError:

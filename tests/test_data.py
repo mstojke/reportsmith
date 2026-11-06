@@ -191,7 +191,7 @@ class TestCsv:
 
     def test_str_path_encoding_and_bom(self, tmp_path):
         path = tmp_path / "data.csv"
-        path.write_text("﻿name;city\nZoë;Kraków\n", encoding="utf-8")
+        path.write_text("\ufeffname;city\nZoë;Kraków\n", encoding="utf-8")
         t = Table.from_csv(str(path), delimiter=";")
         assert headers(t) == ["name", "city"]
         assert cells(t) == [["Zoë", "Kraków"]]

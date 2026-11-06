@@ -40,7 +40,7 @@ EXAMPLES = [
     ("examples/merge_example.py", "merging-and-highlighting", "Merging, metadata and highlighting"),
 ]
 
-FORMATS = [(".html", "HTML"), (".pdf", "PDF"), (".md", "Markdown"), (".tex", "LaTeX")]
+FORMATS = [(".html", "HTML"), (".pdf", "PDF"), (".docx", "Word"), (".md", "Markdown"), (".tex", "LaTeX")]
 
 
 def summary(script: Path) -> str:

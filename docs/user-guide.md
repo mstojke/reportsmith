@@ -20,8 +20,9 @@ This guide walks through every feature. For a terse signature-level listing, see
 12. [Exporting](#exporting) — including [page headers, footers and numbers](#page-headers-footers-and-numbers)
 13. [Exporting to LaTeX](#exporting-to-latex)
 14. [Exporting to PDF](#exporting-to-pdf)
-15. [Customizing the HTML output](#customizing-the-html-output)
-16. [Escaping and safety](#escaping-and-safety)
+15. [Exporting to Word](#exporting-to-word)
+16. [Customizing the HTML output](#customizing-the-html-output)
+17. [Escaping and safety](#escaping-and-safety)
 
 ---
 
@@ -500,10 +501,13 @@ A **labelled** equation is numbered "(1)", "(2)", ... in document order, and `re
 | LaTeX | `\(...\)` (loads `amsmath`) | `\[...\]`, or an `equation` environment with `\label` when labelled |
 | Markdown | `$...$` | `$$...$$`, with `\tag{n}` when numbered — GitHub, and MathJax/KaTeX-based sites, typeset both |
 | HTML | `\(...\)` | `\[...\]` with `\tag{n}`; typeset by [MathJax](https://www.mathjax.org/) |
-| PDF | Unicode text: `math(r"\alpha^2 \le \pi")` reads "α² ≤ π" | Typeset with matplotlib's mathtext when matplotlib is installed; otherwise centred Unicode text |
+| PDF | Unicode text: `math(r"\alpha^2 \le \pi")` reads "α² ≤ π" | Typeset with matplotlib's mathtext when matplotlib is installed, including multi-line environments; otherwise centred Unicode text |
+| Word | An editable Word equation | An editable Word equation, with "(n)" at the right margin when numbered |
 
 - **HTML:** a full document that contains math loads MathJax 3 from the jsDelivr CDN (`reportsmith.renderers.html.MATHJAX_URL`), so math needs a network connection to display; offline, the TeX source shows instead. `to_html(mathjax="/static/mathjax/tex-chtml.js")` loads another (e.g. self-hosted) MathJax build, and `mathjax=False` leaves the script out — as does `full_document=False`, where the page you embed the report in must load MathJax. Only `\(...\)` and `\[...\]` are read as math, so dollar signs in ordinary text are left alone.
-- **PDF:** mathtext covers most single-line TeX math — fractions, roots, sums and integrals with limits, Greek letters, accents — but not environments such as `aligned`, `cases` or matrices; those, and everything without matplotlib, fall back to a Unicode approximation. Inline math is always Unicode text; with the PDF core fonts (no Unicode font found or `fonts=()`), symbols outside Latin-1 are spelled out ("alpha <= pi").
+- **HTML offline:** `to_html(mathjax="embed")` puts MathJax itself into the page, so its math displays with no network connection — for files sent by email, archived, or opened on an intranet. It embeds MathJax's SVG build (`reportsmith.renderers.html.MATHJAX_SVG_URL`), which draws math as SVG and needs no web fonts; it is downloaded the first time and then cached (in `%LOCALAPPDATA%\reportsmith`, `~/Library/Caches/reportsmith` or `~/.cache/reportsmith`; set `REPORTSMITH_CACHE` to choose), and adds about 2 MB to each page. `mathjax=Path("tex-svg.js")` embeds a MathJax build you already have instead, with no download.
+- **PDF:** mathtext covers most TeX math — fractions, roots, sums and integrals with limits, Greek letters, accents. Multi-line environments — `aligned` / `align` / `split`, `cases`, `matrix` / `pmatrix` / `bmatrix` / `Bmatrix` / `vmatrix` / `Vmatrix`, `array`, `gathered` — and bare `\\` line breaks are typeset cell by cell and assembled, with delimiters drawn to their height; they may stand inside a larger expression (`A = \begin{pmatrix}...\end{pmatrix}`). TeX mathtext can't parse (and everything without matplotlib) falls back to a Unicode approximation. Inline math is always Unicode text; with the PDF core fonts (no Unicode font found or `fonts=()`), symbols outside Latin-1 are spelled out ("alpha <= pi").
+- **Word:** math becomes native, editable Word equations (Office Math), converted from the TeX: fractions, roots, scripts, big operators with limits, `\left`/`\right` delimiters, accents, functions, `\text`, `\mathbb` and the other font commands, and the environments above. Word, LibreOffice and Google Docs show them as equations.
 - **Bookmarks and tables of contents** show math in a heading as Unicode text (PDF, HTML, Markdown) or as the source without its markup (LaTeX's PDF bookmarks).
 - The TeX is passed through as written, unescaped, to LaTeX, Markdown and MathJax — so it must be valid TeX.
 
@@ -581,6 +585,8 @@ html_text     = report.to_html()
 report.save_markdown("report.md")     # writes UTF-8, returns the Path
 report.save_html("report.html")
 
+report.save_docx("report.docx")       # Word; no extra packages needed
+
 report.save("report.pdf")             # format from the extension
 report.save("report.html", full_document=False)   # options go to save_html()
 ```
@@ -609,7 +615,7 @@ Each is a string (centred) or a `(left, centre, right)` tuple. Placeholders: `{p
 
 `to_html()` / `save_html()` also take `theme=` and `highlight=` (see [Customizing the HTML output](#customizing-the-html-output) and [Syntax highlighting](#syntax-highlighting)); `to_markdown()` / `save_markdown()` take `front_matter=` (see [Metadata](#metadata)).
 
-`save(path, **options)` picks the format from the file extension — `.md` / `.markdown`, `.html` / `.htm`, `.tex`, `.pdf` (case-insensitive) — and passes any options to the matching `save_*` method. Other extensions raise `ValueError`.
+`save(path, **options)` picks the format from the file extension — `.md` / `.markdown`, `.html` / `.htm`, `.tex`, `.pdf`, `.docx` (case-insensitive) — and passes any options to the matching `save_*` method. Other extensions raise `ValueError`.
 
 Generated figure images are embedded in HTML; `save_markdown()` writes them into a `report_files/` folder next to the file (see [Figures](#figures)).
 
@@ -687,6 +693,30 @@ Details and limitations:
 - **Missing images** render as an `[Image: alt]` (or `[Figure: ...]`) placeholder instead of failing the export.
 - **`raw(...)` content is skipped** — Markdown/HTML/LaTeX passthrough has no meaning in PDF.
 - Without fpdf2 installed, `to_pdf()` raises `ImportError` with the install hint; the rest of the library is unaffected.
+
+## Exporting to Word
+
+```python
+report.save_docx("report.docx")          # or report.save("report.docx")
+data = report.to_docx(highlight=True)    # bytes; highlight needs the highlight extra
+```
+
+Word export needs no extra packages: reportsmith writes the `.docx` (Office Open XML) itself. The file opens in Microsoft Word, LibreOffice, Google Docs and Pages, and is meant to be edited further:
+
+- **Headings** use Word's built-in Heading 1–6 styles, so the navigation pane, outline view and Word's own tables of contents work. Every style (Normal, Title, Quote, Code, Caption, List Paragraph, ...) is a named style you can restyle in Word.
+- **Table of contents:** a real Word TOC field, prefilled with linked entries. The file asks Word to update fields when opened (Word shows a prompt), which adds the page numbers; LibreOffice and Google Docs show the entries as written.
+- **Footnotes** are real Word footnotes at the bottom of the page.
+- **Lists** are Word numbered and bulleted lists (each list restarts at 1); definition lists are a bold term with an indented definition, and task lists use ☑ / ☐.
+- **Tables** repeat their header row on every page and keep rows together; `widths`, `striped`, `footer` and cell colours carry over. Captions follow tables and figures ("Table 1: ...").
+- **Figures** are embedded pictures (PNG, JPEG, GIF). SVG figures are embedded as SVG, and plots as SVG with a PNG copy: Word 2016 and later show the vector image, older readers the bitmap (for an SVG you supplied, a plain grey box of the right size, since reportsmith doesn't rasterize SVG). A missing file becomes a `[Figure: ...]` placeholder; a remote `image()` becomes a link.
+- **Cross-references** (`ref()`) and the TOC are internal links to bookmarks.
+- **Math:** inline and display math are editable Word equations, converted from the TeX (see [Math](#math)). A numbered equation sits in a borderless three-column table, centred with "(n)" at the right margin, so Word keeps it in display style.
+- **Callouts** are one-cell tables with a coloured bar and a pale background.
+- **Headers and footers** use Word's PAGE and NUMPAGES fields; the first page gets the footer but not the header. A cover is its own section, centred on the page, with neither; its note goes in the cover's own footer, at the foot of the page.
+- **Metadata** (title, author, description, keywords, language) goes into the document properties, and the language into the default text language (spelling and hyphenation).
+- **`raw(...)` content is skipped**, as in PDF.
+
+The page is A4 with 2 cm margins and the body font is Calibri 11 pt; restyle in Word (Design / Styles) or with python-docx afterwards.
 
 ## Customizing the HTML output
 

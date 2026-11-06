@@ -15,7 +15,7 @@ Everything documented here is importable from the top-level package:
        TaskList, PageBreak, Table, Image,
        HorizontalRule, Raw, TableOfContents, Callout, Figure, Cell, Equation,
        Inline, bold, italic, code, link, strike, sub, sup, math, footnote, ref,
-       MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer,
+       MarkdownRenderer, HtmlRenderer, LatexRenderer, PdfRenderer, DocxRenderer,
    )
 
 Type aliases
@@ -95,7 +95,10 @@ Report
       A full document containing math loads MathJax
       (``reportsmith.renderers.html.MATHJAX_URL``) to typeset it;
       ``mathjax`` may be the URL of another MathJax build, or ``False`` to
-      leave the script out. :meth:`save_html` takes the same options.
+      leave the script out. For pages that show math offline,
+      ``mathjax="embed"`` embeds MathJax's SVG build (downloaded once, then
+      cached; about 2 MB per page) and a :class:`pathlib.Path` embeds a
+      local MathJax build. :meth:`save_html` takes the same options.
 
    .. py:method:: save_markdown(path, front_matter=False) -> pathlib.Path
 
@@ -134,12 +137,22 @@ Report
 
       Write the PDF export to *path* and return it (requires ``fpdf2``).
 
+   .. py:method:: to_docx(highlight=False) -> bytes
+
+      Render the report as a Word document (``.docx``), with no extra
+      packages. ``highlight=True`` colours code blocks with Pygments. See
+      :class:`DocxRenderer`.
+
+   .. py:method:: save_docx(path, highlight=False) -> pathlib.Path
+
+      Write the Word export to *path* and return it.
+
    .. py:method:: save(path, **options) -> pathlib.Path
 
       Write the report in the format given by *path*'s extension:
       ``.md`` / ``.markdown`` (:meth:`save_markdown`), ``.html`` / ``.htm``
-      (:meth:`save_html`), ``.tex`` (:meth:`save_latex`) or ``.pdf``
-      (:meth:`save_pdf`), case-insensitively. *options* are passed to that
+      (:meth:`save_html`), ``.tex`` (:meth:`save_latex`), ``.pdf``
+      (:meth:`save_pdf`) or ``.docx`` (:meth:`save_docx`), case-insensitively. *options* are passed to that
       method.
 
       :raises ValueError: for any other extension.
@@ -429,7 +442,9 @@ render-agnostic.
    ``equation`` environment with ``\label``. Markdown: ``$$...$$`` (with
    ``\tag{n}``). HTML: ``<div class="equation">\[...\]</div>`` typeset
    by MathJax. PDF: typeset with matplotlib's mathtext when installed and
-   able to parse it, else approximated in Unicode text.
+   able to parse it — multi-line environments (``aligned``, ``cases``,
+   matrices, ``array``, ``gathered``) cell by cell — else approximated in
+   Unicode text. Word: an editable Word equation.
 
    :raises ValueError: for empty *tex* or an invalid *label*.
 
@@ -590,8 +605,8 @@ Inline spans
 
    Inline math written in TeX, e.g. ``math(r"E = mc^2")``. LaTeX
    ``\(...\)``; Markdown ``$...$``; HTML ``\(...\)`` typeset by
-   MathJax; PDF and plain-text uses (bookmarks, TOC entries) a Unicode
-   approximation ("E = mc²"). Raises ``ValueError`` for empty *tex*.
+   MathJax; Word an editable equation; PDF and plain-text uses
+   (bookmarks, TOC entries) a Unicode approximation ("E = mc²"). Raises ``ValueError`` for empty *tex*.
 
 .. py:function:: ref(label, text="") -> Inline
 
@@ -693,6 +708,22 @@ are convenience wrappers around these.
    only :class:`Raw` content with ``format="latex"`` is emitted.
 
    .. py:method:: render(report) -> str
+
+.. py:class:: DocxRenderer(highlight=False)
+
+   Renders a Report to a Word document: an Office Open XML package written
+   with the standard library. Headings use Word's built-in heading styles;
+   footnotes are Word footnotes; lists use Word numbering; tables repeat
+   their header row; figures are embedded pictures, SVG figures and plots
+   as SVG with a PNG fallback (missing files become placeholders);
+   ``ref()`` and TOC entries are
+   internal links; the TOC is a Word TOC field that Word updates (adding
+   page numbers) when the file is opened; headers and footers use PAGE /
+   NUMPAGES fields. Math becomes editable Word equations (Office Math,
+   via ``reportsmith.omml.tex_to_omml``). :class:`Raw` content is
+   skipped. Output is deterministic: the same report gives the same bytes.
+
+   .. py:method:: render(report) -> bytes
 
 .. py:class:: PdfRenderer(fonts=None, mono_fonts=None, highlight=False)
 

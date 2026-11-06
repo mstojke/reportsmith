@@ -76,6 +76,7 @@ written = [
     annual.save(OUT / "merge_report.html", highlight=highlight),
     annual.save(OUT / "merge_report_dark.html", theme="dark", highlight=highlight),
     annual.save(OUT / "merge_report.tex", highlight=highlight),
+    annual.save(OUT / "merge_report.docx", highlight=highlight),
 ]
 try:
     written.append(annual.save(OUT / "merge_report.pdf", highlight=highlight))

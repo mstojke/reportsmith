@@ -65,6 +65,7 @@ written = [
     report.save_markdown(OUT / "callouts_report.md"),
     report.save_html(OUT / "callouts_report.html"),
     report.save_latex(OUT / "callouts_report.tex"),
+    report.save_docx(OUT / "callouts_report.docx"),
 ]
 try:
     written.append(report.save_pdf(OUT / "callouts_report.pdf"))

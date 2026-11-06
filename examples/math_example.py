@@ -32,6 +32,9 @@ with report.section("Model") as s:
         "mean time a ticket spends there follow from Little's law, ", math(r"L = \lambda W"), ":",
     ])
     s.equation(r"L = \frac{\rho}{1 - \rho}, \qquad W = \frac{1}{\mu - \lambda}", label="mm1")
+    s.paragraph(["The wait in the queue, before service starts, grows without bound as ", math(r"\rho \to 1"), ":"])
+    s.equation(r"W_q = \begin{cases} \frac{\rho}{\mu - \lambda} & \rho < 1 \\ \infty & \rho \ge 1 \end{cases}",
+               label="wait")
 
 with report.section("Today's numbers") as s:
     s.table(
@@ -54,7 +57,7 @@ with report.section("Variability") as s:
     s.paragraph("The standard deviation of the daily ticket count over n days:")
     s.equation(r"\sigma = \sqrt{\frac{1}{n} \sum_{i=1}^{n} \left(x_i - \bar{x}\right)^2}")
 
-for name in ("math_report.md", "math_report.html", "math_report.tex", "math_report.pdf"):
+for name in ("math_report.md", "math_report.html", "math_report.tex", "math_report.pdf", "math_report.docx"):
     try:
         path = report.save(OUT / name)
     except ImportError:

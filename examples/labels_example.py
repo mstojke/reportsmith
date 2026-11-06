@@ -46,7 +46,7 @@ with report.section("Wyniki") as s:
     s.equation(r"m = \frac{P - K}{P}", label="marza")
     s.callout("warning", ["Szczegóły w ", ref("podsumowanie"), "."])
 
-for name in ("labels_report.md", "labels_report.html", "labels_report.tex", "labels_report.pdf"):
+for name in ("labels_report.md", "labels_report.html", "labels_report.tex", "labels_report.pdf", "labels_report.docx"):
     try:
         path = report.save(OUT / name)
     except ImportError:

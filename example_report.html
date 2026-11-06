@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="Michal Stojke">
+<meta name="generator" content="reportsmith 0.8">
 <title>Q3 2026 Engineering Report</title>
 <style>
 :root {
@@ -12,6 +14,22 @@
   --accent: #1d4ed8;
   --code-bg: #f3f4f6;
   --bg: #ffffff;
+  --note: #1d4ed8;
+  --tip: #15803d;
+  --important: #7c3aed;
+  --warning: #b45309;
+  --caution: #b91c1c;
+  --stripe: #f8f9fb;
+  --cell-red: #b91c1c;
+  --cell-bg-red: #fee2e2;
+  --cell-green: #15803d;
+  --cell-bg-green: #dcfce7;
+  --cell-amber: #b45309;
+  --cell-bg-amber: #fef3c7;
+  --cell-blue: #1d4ed8;
+  --cell-bg-blue: #dbeafe;
+  --cell-gray: #6b7280;
+  --cell-bg-gray: #f3f4f6;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -21,6 +39,22 @@
     --accent: #60a5fa;
     --code-bg: #1f2937;
     --bg: #111827;
+    --note: #60a5fa;
+    --tip: #4ade80;
+    --important: #a78bfa;
+    --warning: #fbbf24;
+    --caution: #f87171;
+    --stripe: #182231;
+    --cell-red: #f87171;
+    --cell-bg-red: #4c1d1d;
+    --cell-green: #4ade80;
+    --cell-bg-green: #14351f;
+    --cell-amber: #fbbf24;
+    --cell-bg-amber: #45300f;
+    --cell-blue: #60a5fa;
+    --cell-bg-blue: #1e2f55;
+    --cell-gray: #9ca3af;
+    --cell-bg-gray: #2b3442;
   }
 }
 body {
@@ -59,22 +93,14 @@ dt { font-weight: 600; }
 dd { margin: 0 0 0.6em 1.5em; }
 ul.task-list { list-style: none; padding-left: 0.2em; }
 ul.task-list input { margin: 0 0.5em 0 0; }
-@media print { .page-break { break-after: page; } }
 .callout { --callout: var(--accent); border-left: 4px solid var(--callout); border-radius: 6px; background: var(--code-bg); padding: 0.6em 1em; margin: 1em 0; }
 .callout > :last-child { margin-bottom: 0; }
 .callout-title { color: var(--callout); font-weight: 600; margin: 0 0 0.3em; }
-.callout-note { --callout: #1d4ed8; }
-.callout-tip { --callout: #15803d; }
-.callout-important { --callout: #7c3aed; }
-.callout-warning { --callout: #b45309; }
-.callout-caution { --callout: #b91c1c; }
-@media (prefers-color-scheme: dark) {
-  .callout-note { --callout: #60a5fa; }
-  .callout-tip { --callout: #4ade80; }
-  .callout-important { --callout: #a78bfa; }
-  .callout-warning { --callout: #fbbf24; }
-  .callout-caution { --callout: #f87171; }
-}
+.callout-note { --callout: var(--note); }
+.callout-tip { --callout: var(--tip); }
+.callout-important { --callout: var(--important); }
+.callout-warning { --callout: var(--warning); }
+.callout-caution { --callout: var(--caution); }
 sup.footnote-ref a { text-decoration: none; }
 .footnotes { color: var(--muted); font-size: 0.9rem; margin-top: 3em; }
 .footnote-back { text-decoration: none; }
@@ -83,6 +109,68 @@ figure img { max-width: 100%; }
 figcaption, caption { color: var(--muted); font-size: 0.85rem; }
 figcaption { margin-top: 0.4em; }
 .caption-label { font-weight: 600; }
+table.striped tbody tr:nth-child(even) { background: var(--stripe); }
+tfoot td { font-weight: 600; border-top: 2px solid var(--muted); }
+td.cell-bold { font-weight: 600; }
+.equation { margin: 1em 0; overflow-x: auto; text-align: center; }
+.cover { display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 70vh; margin-bottom: 3rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border); }
+.cover-top { display: flex; flex-direction: column; align-items: center; gap: 1rem; width: 100%; }
+.cover-logo { max-height: 30vh; object-fit: contain; }
+.cover-org { color: var(--muted); font-size: 1.1rem; font-weight: 600; letter-spacing: 0.04em; }
+.cover-main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 3rem 0; }
+.cover h1 { font-size: 2.6rem; margin: 0; }
+.cover-subtitle { color: var(--muted); font-size: 1.3rem; margin-top: 0.6rem; }
+.cover-rule { width: 4rem; border-top: 3px solid var(--accent); margin: 1.6rem auto; }
+.cover-meta { font-size: 1.05rem; }
+.cover-note { color: var(--muted); font-size: 0.85rem; }
+.cell-red { color: var(--cell-red); }
+.cell-bg-red { background: var(--cell-bg-red); }
+.cell-green { color: var(--cell-green); }
+.cell-bg-green { background: var(--cell-bg-green); }
+.cell-amber { color: var(--cell-amber); }
+.cell-bg-amber { background: var(--cell-bg-amber); }
+.cell-blue { color: var(--cell-blue); }
+.cell-bg-blue { background: var(--cell-bg-blue); }
+.cell-gray { color: var(--cell-gray); }
+.cell-bg-gray { background: var(--cell-bg-gray); }
+@media print {
+  :root {
+    --text: #1f2933;
+    --muted: #6b7280;
+    --border: #d7dbe0;
+    --accent: #1d4ed8;
+    --code-bg: #f3f4f6;
+    --bg: #ffffff;
+    --note: #1d4ed8;
+    --tip: #15803d;
+    --important: #7c3aed;
+    --warning: #b45309;
+    --caution: #b91c1c;
+    --stripe: #f8f9fb;
+    --cell-red: #b91c1c;
+    --cell-bg-red: #fee2e2;
+    --cell-green: #15803d;
+    --cell-bg-green: #dcfce7;
+    --cell-amber: #b45309;
+    --cell-bg-amber: #fef3c7;
+    --cell-blue: #1d4ed8;
+    --cell-bg-blue: #dbeafe;
+    --cell-gray: #6b7280;
+    --cell-bg-gray: #f3f4f6;
+  }
+  body { max-width: none; padding: 0; }
+  h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+  figure, pre, blockquote, .callout, tr, img { break-inside: avoid; }
+  pre { white-space: pre-wrap; overflow: visible; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; color: var(--muted); font-size: 0.85em; word-break: break-all; }
+  .page-break { break-after: page; }
+  /* The cover fills the first page (vh is the page area when printing). */
+  .cover { height: 100vh; min-height: 0; box-sizing: border-box; margin: 0; padding: 0; border: none; break-after: page; overflow: hidden; }
+}
+@page {
+  margin: 20mm 18mm;
+  @bottom-center { content: counter(page); font: 9pt -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #6b7280; }
+}
 </style>
 </head>
 <body>
@@ -90,7 +178,7 @@ figcaption { margin-top: 0.4em; }
 <div class="report-meta">
 <div class="subtitle">Platform team quarterly summary</div>
 <div><strong>Author:</strong> Michal Stojke</div>
-<div><strong>Date:</strong> 2026-10-22</div>
+<div><strong>Date:</strong> 2026-11-06</div>
 </div>
 <h2>Executive Summary</h2>
 <p>The platform team shipped <strong>14 features</strong> this quarter while reducing infrastructure spend by <strong>18%</strong>. Details below; raw dashboards are available <a href="https://example.com/dashboards">here</a>.</p>

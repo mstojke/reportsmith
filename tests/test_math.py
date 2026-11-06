@@ -209,7 +209,9 @@ class TestRenderEquation:
 
     @requires_matplotlib
     def test_unparsable_returns_none(self):
-        assert render_equation(r"\begin{align} x \end{align}") is None
+        assert render_equation(r"\notacommand{x}") is None
+        assert render_equation(r"\begin{pmatrix} \notacommand & 1 \end{pmatrix}") is None
+        assert render_equation(r"\begin{pmatrix} a & b") is None  # no \end
 
     def test_without_matplotlib(self, monkeypatch):
         import builtins

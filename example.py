@@ -1,4 +1,4 @@
-"""Demo: build a sample report and export it to Markdown, HTML, LaTeX and PDF."""
+"""Demo: build a sample report and export it to Markdown, HTML, LaTeX, Word and PDF."""
 
 from reportsmith import ListElement, Report, bold, code, italic, link
 
@@ -57,7 +57,8 @@ report.paragraph([italic("Generated with the "), code("reportsmith"), italic(" l
 md_path = report.save_markdown("example_report.md")
 html_path = report.save_html("example_report.html")
 tex_path = report.save_latex("example_report.tex")
-print(f"Wrote {md_path}, {html_path} and {tex_path}")
+docx_path = report.save_docx("example_report.docx")
+print(f"Wrote {md_path}, {html_path}, {tex_path} and {docx_path}")
 
 try:
     pdf_path = report.save_pdf("example_report.pdf")
