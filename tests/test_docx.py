@@ -129,6 +129,16 @@ class TestPackage:
     def test_invalid_xml_characters_dropped(self):
         doc = body(lambda r: r.paragraph("a\x00b\x0bc"))
         assert ">abc<" in doc
+        forbidden = "".join(map(chr, [0x01, 0x08, 0x0C, 0x0E, 0x1F, 0xFFFE, 0xFFFF]))
+        doc = body(lambda r: r.paragraph("x" + forbidden + "y\tz"))
+        assert ">xy<" in doc and "<w:tab/>" in doc  # tab survives (as a tab element)
+
+    def test_source_has_no_invisible_characters(self):
+        import reportsmith.renderers.docx as docx_module
+        from pathlib import Path
+
+        source = Path(docx_module.__file__).read_text(encoding="utf-8")
+        assert not [c for c in source if c in (chr(0xFFFE), chr(0xFFFF)) or (ord(c) < 0x20 and c not in "\t\n\r")]
 
 
 class TestText:

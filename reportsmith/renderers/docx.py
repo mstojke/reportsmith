@@ -85,11 +85,15 @@ _NS = (
 )
 _XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
 _REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-_INVALID_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]")
+# Characters XML 1.0 forbids: C0 controls other than tab, line feed and
+# carriage return, and the noncharacters U+FFFE / U+FFFF. A str.translate
+# table that deletes them (written as code points, so no invisible
+# characters end up in this file).
+_INVALID_XML = dict.fromkeys([c for c in range(0x20) if c not in (0x09, 0x0A, 0x0D)] + [0xFFFE, 0xFFFF])
 
 
 def _esc(text: str, quote: bool = False) -> str:
-    text = _INVALID_XML.sub("", text)
+    text = text.translate(_INVALID_XML)
     return _xml_escape(text, {'"': "&quot;"} if quote else {})
 
 

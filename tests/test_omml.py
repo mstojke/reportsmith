@@ -68,7 +68,7 @@ class TestStructures:
         assert '<m:begChr m:val="⟨"/>' in omml(r"\left\langle x \right\rangle")
 
     def test_accents_and_bars(self):
-        assert '<m:chr m:val="̂"/>' in omml(r"\hat{x}")
+        assert '<m:chr m:val="\u0302"/>' in omml(r"\hat{x}")
         assert '<m:pos m:val="top"/>' in omml(r"\overline{AB}")
 
     def test_text_and_fonts(self):

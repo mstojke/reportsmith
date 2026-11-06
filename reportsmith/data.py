@@ -173,7 +173,7 @@ def from_csv(
     else:
         text = Path(source).read_text(encoding=encoding)
     # utf-8-sig behaviour for any encoding: drop a leading byte-order mark.
-    lines = list(csv.reader(io.StringIO(text.lstrip("﻿")), delimiter=delimiter))
+    lines = list(csv.reader(io.StringIO(text.lstrip("\ufeff")), delimiter=delimiter))
     lines = [line for line in lines if line]  # skip blank lines
     if not lines:
         raise ValueError("CSV input is empty; expected a header row")
